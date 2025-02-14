@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Удалить ответ</title>
+</head>
+<body>
+    <h1>Удалить ответ "{{ object.answer_text }}"?</h1>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit">Да, удалить</button>
+        <a href="{% url 'response_list' question_id=object.question_id %}">Отмена</a>
+    </form>
+</body>
+</html>

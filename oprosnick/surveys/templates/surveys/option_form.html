@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{% if object %}Редактировать{% else %}Создать{% endif %} вариант</title>
+</head>
+<body>
+    <h1>{% if object %}Редактирование варианта{% else %}Новый вариант ответа{% endif %}</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Сохранить</button>
+    </form>
+    <a href="{% url 'option_list' question_id=object.question_id|default:question_id %}">Отмена</a>
+</body>
+</html>

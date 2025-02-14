@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Вопросы опроса</title>
+</head>
+<body>
+    <h1>Вопросы опроса: {{ survey.title }}</h1>
+    <a href="{% url 'question_create' survey_id=survey.pk %}">Создать новый вопрос</a>
+    <ul>
+        {% for question in questions %}
+            <li>
+                {{ question.question_text }} ({{ question.get_question_type_display }})
+                <a href="{% url 'question_update' pk=question.pk %}">Редактировать</a>
+                <a href="{% url 'question_delete' pk=question.pk %}">Удалить</a>
+            </li>
+        {% endfor %}
+    </ul>
+    <a href="{% url 'survey_detail' pk=survey.pk %}">Назад к опросу</a>
+</body>
+</html>

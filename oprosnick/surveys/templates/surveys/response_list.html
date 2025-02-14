@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Ответы на вопрос</title>
+</head>
+<body>
+    <h1>Ответы на вопрос: {{ question.question_text }}</h1>
+    <a href="{% url 'response_create' question_id=question.pk %}">Добавить ответ</a>
+    <ul>
+        {% for response in responses %}
+            <li>
+                {{ response.user.username }}: {{ response.answer_text }}
+                <a href="{% url 'response_update' pk=response.pk %}">Редактировать</a>
+                <a href="{% url 'response_delete' pk=response.pk %}">Удалить</a>
+            </li>
+        {% endfor %}
+    </ul>
+    <a href="{% url 'question_list' survey_id=question.survey_id %}">Назад к вопросам</a>
+</body>
+</html>

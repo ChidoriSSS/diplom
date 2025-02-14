@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Варианты ответов</title>
+</head>
+<body>
+    <h1>Варианты ответа: {{ question.question_text }}</h1>
+    <a href="{% url 'option_create' question_id=question.pk %}">Добавить вариант</a>
+    <ul>
+        {% for option in options %}
+            <li>
+                {{ option.option_text }}
+                <a href="{% url 'option_update' pk=option.pk %}">Редактировать</a>
+                <a href="{% url 'option_delete' pk=option.pk %}">Удалить</a>
+            </li>
+        {% endfor %}
+    </ul>
+    <a href="{% url 'question_list' survey_id=question.survey_id %}">Назад к вопросам</a>
+</body>
+</html>
