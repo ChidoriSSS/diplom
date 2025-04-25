@@ -1,0 +1,10 @@
+<!-- feedback360/templates/feedback360/profile.html -->
+{% extends "feedback360/base.html" %}
+
+{% block content %}
+  <h2>Профиль пользователя</h2>
+  <p>Имя: {{ user.first_name }}</p>
+  <p>Фамилия: {{ user.last_name }}</p>
+  <p>Email: {{ user.email }}</p>
+  <!-- Дополнительные поля профиля -->
+{% endblock %}

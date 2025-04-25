@@ -1,0 +1,34 @@
+{% extends 'feedback360/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Отчет по сотруднику: {{ report.respondent.user.get_full_name }}</h2>
+    <h4>Опрос: {{ report.survey.name }}</h4>
+
+    <div class="card mt-3">
+        <div class="card-header bg-primary text-white">
+            <h5>Сводка</h5>
+        </div>
+        <div class="card-body">
+            <p>Средний балл: {{ report.report_data.summary.average_score|default:"Нет данных" }}</p>
+            <p>Отвечено вопросов: {{ report.report_data.summary.answered_questions }}/{{ report.report_data.summary.total_questions }}</p>
+        </div>
+    </div>
+
+    <div class="card mt-3">
+        <div class="card-header bg-info text-white">
+            <h5>Комментарии</h5>
+        </div>
+        <div class="card-body">
+            {% for item in report.report_data.details %}
+                <div class="mb-2">
+                    <strong>{{ item.question }}</strong>
+                    <p>{{ item.comment }}</p>
+                </div>
+            {% empty %}
+                <p>Нет комментариев</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,154 @@
+{% extends 'feedback360/base.html' %}
+
+{% block title %}Главная страница{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <!-- Фильтры и сортировка -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <form class="row g-3">
+                    <div class="col-md-4">
+                        <select name="category" class="form-select">
+                            <option value="">Все категории</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat }}" {% if cat == selected_category %}selected{% endif %}>
+                                {{ cat|default:"Без категории" }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <select name="sort" class="form-select">
+                            <option value="deadline" {% if sort_mode == 'deadline' %}selected{% endif %}>По сроку выполнения</option>
+                            <option value="progress" {% if sort_mode == 'progress' %}selected{% endif %}>По прогрессу</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">Применить фильтры</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Колонка активных опросов -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h4>Активные опросы</h4>
+                <span class="badge bg-light text-primary">Всего: {{ total_active }}</span>
+            </div>
+            <div class="card-body">
+                {% if active_surveys %}
+                <div class="list-group active-surveys-list">
+                    {% for survey in active_surveys %}
+                    <a href="{% url 'survey_detail' survey.id %}"
+                       class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">{{ survey.name }}</h5>
+                            <small>{{ survey.end_date|date:"d.m.Y" }}</small>
+                        </div>
+                        <div class="mt-2">
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar"
+                                     role="progressbar"
+                                     style="width: {{ survey.user_progress }}%;"
+                                     aria-valuenow="{{ survey.user_progress }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                    {{ survey.user_progress }}%
+                                </div>
+                            </div>
+                            <div class="mt-1">
+                                {% for cat in survey.categories %}
+                                <span class="badge bg-secondary me-1">{{ cat|default:"Общие" }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-info">Нет активных опросов</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Колонка ожидающих оценки -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h4>Ожидают вашей оценки</h4>
+                <span class="badge bg-light text-success">Всего: {{ total_pending }}</span>
+            </div>
+            <div class="card-body">
+                {% if surveys_to_complete %}
+                <div class="list-group pending-surveys-list">
+                    {% for rater in surveys_to_complete %}
+                    <a href="{% url 'respond' rater.id %}"
+                       class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">{{ rater.respondent.survey.name }}</h5>
+                            <span class="badge {% if rater.days_remaining < 3 %}bg-danger{% else %}bg-warning{% endif %}">
+                                Осталось дней: {{ rater.days_remaining }}
+                            </span>
+                        </div>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                Оцениваемый: {{ rater.respondent.user.get_full_name }}
+                            </small>
+                            <br>
+                            <span class="badge bg-info">
+                                Тип оценки: {{ rater.get_relationship_type_display }}
+                            </span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-info">Нет опросов для оценки</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Стили для скроллбаров -->
+<style>
+    .active-surveys-list,
+    .pending-surveys-list {
+        max-height: 500px; /* Высота для ~5 элементов */
+        overflow-y: auto;
+        scrollbar-width: thin; /* Для Firefox */
+    }
+
+    /* Кастомизация для Chrome/Edge */
+    .active-surveys-list::-webkit-scrollbar,
+    .pending-surveys-list::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .active-surveys-list::-webkit-scrollbar-track,
+    .pending-surveys-list::-webkit-scrollbar-track {
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+
+    .active-surveys-list::-webkit-scrollbar-thumb,
+    .pending-surveys-list::-webkit-scrollbar-thumb {
+        background: #adb5bd;
+        border-radius: 4px;
+    }
+
+    .active-surveys-list::-webkit-scrollbar-thumb:hover,
+    .pending-surveys-list::-webkit-scrollbar-thumb:hover {
+        background: #6c757d;
+    }
+</style>
+
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends 'feedback360/base.html' %}
+
+{% block content %}
+<div class="card mt-4">
+    <div class="card-header bg-success text-white">
+        <h3>Оценка завершена!</h3>
+    </div>
+    <div class="card-body text-center">
+        <div class="mb-4">
+            <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+        </div>
+        <h4>Спасибо за ваши ответы!</h4>
+        <p>Вы ответили на все вопросы опроса</p>
+        <a href="{% url 'dashboard' %}" class="btn btn-primary">
+            Вернуться на главную
+        </a>
+    </div>
+</div>
+{% endblock %}

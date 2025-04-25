@@ -1,0 +1,65 @@
+{% extends 'feedback360/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h3>Создание нового опроса</h3>
+        </div>
+        <div class="card-body">
+            <form method="post" novalidate>
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label">Шаблон опроса*</label>
+                    {{ form.template }}
+                    {% if form.template.errors %}
+                    <div class="invalid-feedback d-block">
+                        {{ form.template.errors|first }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Название опроса*</label>
+                    {{ form.name }}
+                    {% if form.name.errors %}
+                    <div class="invalid-feedback d-block">
+                        {{ form.name.errors|first }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Описание</label>
+                    {{ form.description }}
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Дата начала*</label>
+                        {{ form.start_date }}
+                        {% if form.start_date.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ form.start_date.errors|first }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Дата окончания*</label>
+                        {{ form.end_date }}
+                        {% if form.end_date.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ form.end_date.errors|first }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Создать опрос</button>
+                <a href="{% url 'survey_list' %}" class="btn btn-secondary">Отмена</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

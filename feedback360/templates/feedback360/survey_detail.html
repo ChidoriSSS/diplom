@@ -1,0 +1,136 @@
+{% extends 'feedback360/base.html' %}
+
+{% block title %}Опрос {{ survey.name }}{% endblock %}
+
+{% block content %}
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h3 class="mb-0">{{ survey.name }}</h3>
+            <span class="badge bg-light text-dark">
+                {{ survey.get_status_display }}
+            </span>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <p><strong>Дата начала:</strong> {{ survey.start_date|date:"d.m.Y" }}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>Дата окончания:</strong> {{ survey.end_date|date:"d.m.Y" }}</p>
+            </div>
+        </div>
+        
+        <div class="mb-3">
+            <h5>Описание:</h5>
+            <p>{{ survey.description|default:"Нет описания" }}</p>
+        </div>
+        
+        <div class="d-flex justify-content-between">
+            <a href="{% url 'survey_list' %}" class="btn btn-outline-secondary">
+                ← Назад к списку
+            </a>
+            <div>
+                <a href="{% url 'survey_update' pk=survey.id %}" class="btn btn-info">Редактировать</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-light">
+        <h4 class="mb-0">Участники опроса</h4>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Сотрудник</th>
+                        <th>Статус</th>
+                        <th>Оценки получено</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for respondent in survey.respondents.all %}
+                    <tr>
+                        <td>
+                            {{ respondent.user.get_full_name }}
+                            <br>
+                            <small class="text-muted">{{ respondent.user.position }}</small>
+                        </td>
+                        <td>
+                            <span class="badge 
+                                {% if respondent.status == 'completed' %}bg-success
+                                {% elif respondent.status == 'in_progress' %}bg-warning
+                                {% else %}bg-secondary{% endif %}">
+                                {{ respondent.get_status_display }}
+                            </span>
+                        </td>
+                        <td>
+                            {{ respondent.responses.count }}/{{ respondent.raters.count }}
+                        </td>
+                        <td>
+                            <a href="{% url 'assign_raters' respondent.id %}" class="btn btn-sm btn-outline-primary">
+                                Назначить оценивающих
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center">
+                            В этом опросе пока нет участников
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="mt-3">
+            {% if is_admin %}
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRespondentModal">
+                + Добавить участников
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления участников -->
+<div class="modal fade" id="addRespondentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить участников</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'add_respondents' pk=survey.id %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Выберите сотрудников</label>
+                        <select multiple
+                                class="form-select"
+                                name="users"
+                                size="8"
+                                style="min-height: 200px;">
+                            {% for user in available_users %}
+                            <option value="{{ user.id }}">
+                                {{ user.get_full_name }}
+                                <small class="text-muted">({{ user.position }})</small>
+                             </option>
+                            {% empty %}
+                            <option disabled>Все сотрудники уже добавлены</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Добавить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

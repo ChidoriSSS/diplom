@@ -1,0 +1,59 @@
+{% extends 'feedback360/base.html' %}
+
+{% block title %}Мои опросы{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between mb-4">
+    <h1>Мои опросы</h1>
+    {% if is_admin %}
+    <a href="{% url 'survey_create' %}" class="btn btn-primary h-100">Создать новый опрос</a>
+    {% endif %}
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Название</th>
+                <th>Статус</th>
+                <th>Дата начала</th>
+                <th>Дата окончания</th>
+                <th>Отчёты</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for survey in surveys %}
+            <tr>
+                <td>
+                    <a href="{% url 'survey_detail' survey.id %}">{{ survey.name }}</a>
+                </td>
+                <td>
+                    <span class="badge
+                        {% if survey.status == 'active' %}bg-success
+                        {% elif survey.status == 'draft' %}bg-warning
+                        {% else %}bg-secondary{% endif %}">
+                        {{ survey.get_status_display }}
+                    </span>
+                </td>
+                <td>{{ survey.start_date|date:"d.m.Y" }}</td>
+                <td>{{ survey.end_date|date:"d.m.Y" }}</td>
+                <td>
+                    {% if survey.reports.exists %}
+                        <a href="{% url 'report' survey.reports.first.id %}"
+                            class="btn btn-sm btn-outline-secondary">
+                            Отчет
+                        </a>
+                    {% else %}
+                        <span class="text-muted">Нет отчета</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="text-center">Вы пока не создали ни одного опроса</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
