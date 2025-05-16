@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h2>Добрый день, {{ user.first_name }}!</h2>
+    <p>Вам назначен опрос: <strong>{{ survey.name }}</strong></p>
+    <p>Сроки проведения: {{ start_date|date:"d.m.Y" }} - {{ end_date|date:"d.m.Y" }}</p>
+    <p>Для прохождения опроса перейдите по ссылке:</p>
+    <a href="{{ survey.get_absolute_url }}">Пройти опрос</a>
+</body>
+</html>

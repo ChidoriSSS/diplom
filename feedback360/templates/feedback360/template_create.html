@@ -1,0 +1,91 @@
+{% extends 'feedback360/base.html' %}
+{% load widget_tweaks %}
+
+{% block content %}
+<div class="container">
+    <div class="card shadow-lg">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">
+                <i class="bi bi-file-earmark-plus me-2"></i>
+                Создание нового шаблона
+            </h4>
+        </div>
+
+
+        <div class="card-body">
+            <form method="post" id="template-form">
+                {% csrf_token %}
+
+                <!-- Основные поля -->
+                <div class="mb-4">
+                    <div class="mb-3">
+                        <label class="form-label">Название шаблона</label>
+                        {{ form.name|add_class:"form-control" }}
+                        {% if form.name.errors %}
+                            <div class="alert alert-danger mt-2">
+                                {% for error in form.name.errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3 form-check form-switch">
+                        {{ form.is_active|add_class:"form-check-input" }}
+                        <label class="form-check-label">Активен</label>
+                    </div>
+                </div>
+
+                <div id="questions-formset">
+                    {{ formset.management_form }}
+
+                    {% for form in formset %}
+                    <div class="question-form mb-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row g-3 align-items-center">
+                                    <div class="col-md-8">
+                                        {{ form.text|add_class:"form-control" }}
+                                        {% if form.text.errors %}
+                                            <div class="text-danger small mt-1">
+                                                {{ form.text.errors }}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-4">
+                                        {{ form.answer_type|add_class:"form-select" }}
+                                    </div>
+
+                                    <!-- Добавьте блок параметров шкалы -->
+                                    <div class="col-md-4 scale-params d-none">
+                                        <div class="input-group">
+                                            <input type="number" name="{{ form.prefix }}-scale_min"
+                                                   class="form-control" placeholder="Min"
+                                                   value="{{ form.scale_min.value|default_if_none:'' }}">
+                                            <span class="input-group-text">-</span>
+                                            <input type="number" name="{{ form.prefix }}-scale_max"
+                                                   class="form-control" placeholder="Max"
+                                                   value="{{ form.scale_max.value|default_if_none:'' }}">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Кнопки управления -->
+                <div class="d-flex justify-content-end mt-4">
+                    <a href="{% url 'template_list' %}" class="btn btn-secondary me-2">
+                        <i class="bi bi-arrow-left"></i> Назад
+                    </a>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-save"></i> Сохранить
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

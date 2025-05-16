@@ -1,0 +1,66 @@
+{% extends 'feedback360/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h3>Редактирование вопросов опроса</h3>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                {% for comp in competencies %}
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h4>{{ comp.name }}</h4>
+                        </div>
+                        <div class="card-body">
+                            {% for question in comp.questions.all %}
+                                <div class="mb-3">
+                                    <label class="form-label">Вопрос {{ forloop.counter }}</label>
+                                    <textarea name="question_{{ question.id }}" 
+                                              class="form-control" 
+                                              rows="2">{{ question.text }}</textarea>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+                
+                <div class="mb-4">
+                    <h4>Добавить новые вопросы:</h4>
+                    <div id="new-questions-container">
+                        <div class="mb-3">
+                            <textarea name="new_questions[]" 
+                                      class="form-control" 
+                                      rows="2"></textarea>
+                        </div>
+                    </div>
+                    <button type="button" 
+                            class="btn btn-secondary" 
+                            onclick="addNewQuestionField()">Добавить поле</button>
+                </div>
+
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                    <a href="{% url 'survey_detail' pk=object.pk %}" class="btn btn-secondary">Отмена</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function addNewQuestionField() {
+    const container = document.getElementById('new-questions-container');
+    const newField = document.createElement('div');
+    newField.className = 'mb-3';
+    newField.innerHTML = `
+        <textarea name="new_questions[]" 
+                  class="form-control" 
+                  rows="2"></textarea>
+    `;
+    container.appendChild(newField);
+}
+</script>
+{% endblock %}

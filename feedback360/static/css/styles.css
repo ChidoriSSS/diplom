@@ -1,0 +1,109 @@
+/* Base styles */
+.navbar-nav {
+    list-style: none;
+    padding-left: 0;
+}
+
+.nav-link {
+    display: flex !important;
+    align-items: center;
+    padding: 0.5rem 1rem;
+}
+
+.dropdown-toggle::after {
+    margin-left: 0.5em;
+    vertical-align: middle;
+}
+
+.bi {
+    font-size: 1.1rem;
+    line-height: 1;
+    vertical-align: -0.125em;
+}
+
+.main-content {
+    min-height: calc(100vh - 120px);
+    padding-top: 20px;
+    padding-bottom: 40px;
+}
+
+/* Progress bars */
+.progress-bar::after {
+    content: attr(aria-valuenow) "/" attr(aria-valuemax);
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: white;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+/* Custom scrollbars */
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #0d6efd #f1f1f1;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+/* Form controls */
+.form-check-input:checked + .btn-outline-primary {
+    background: #0d6efd;
+    color: white !important;
+    transform: scale(1.05);
+}
+
+/* Card styles */
+.card-header {
+    font-weight: 500;
+}
+
+.question-text {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    border-left: 4px solid #0d6efd;
+    padding-left: 1rem;
+}
+
+textarea.form-control {
+    min-height: 100px;
+    resize: vertical;
+}
+
+.form-control {
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.question-textarea {
+    min-height: 100px;
+    resize: vertical;
+    transition: all 0.3s ease;
+}
+
+.question-textarea:focus {
+    min-height: 120px;
+    box-shadow: 0 0 8px rgba(13, 110, 253, 0.25);
+}
+
+/* Для совместимости с существующими элементами */
+.form-control[rows="2"] {
+    min-height: 100px;
+}
