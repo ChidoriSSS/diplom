@@ -6,10 +6,8 @@ class Command(BaseCommand):
     help = 'Fix null sort orders'
 
     def handle(self, *args, **options):
-        # Для компетенций
-        Competency.objects.filter(sort_order__isnull=True).update(sort_order=0)
-
-        # Для вопросов
-        Question.objects.filter(sort_order__isnull=True).update(sort_order=0)
-
-        self.stdout.write(self.style.SUCCESS("Sort orders fixed"))
+        # Для вопросов в шаблонах
+        for template in SurveyTemplate.objects.all():
+            for idx, question in enumerate(template.template_questions.order_by('sort_order'), 1):
+                question.sort_order = idx
+                question.save()

@@ -117,38 +117,14 @@
         </div>
     </div>
 </div>
+{% endblock content %}
 
-<!-- Стили для скроллбаров -->
+{% block extra_css %}
 <style>
     .active-surveys-list,
     .pending-surveys-list {
-        max-height: 500px; /* Высота для ~5 элементов */
+        max-height: 500px;
         overflow-y: auto;
-        scrollbar-width: thin; /* Для Firefox */
-    }
-
-    /* Кастомизация для Chrome/Edge */
-    .active-surveys-list::-webkit-scrollbar,
-    .pending-surveys-list::-webkit-scrollbar {
-        width: 8px;
-    }
-
-    .active-surveys-list::-webkit-scrollbar-track,
-    .pending-surveys-list::-webkit-scrollbar-track {
-        background: #f8f9fa;
-        border-radius: 4px;
-    }
-
-    .active-surveys-list::-webkit-scrollbar-thumb,
-    .pending-surveys-list::-webkit-scrollbar-thumb {
-        background: #adb5bd;
-        border-radius: 4px;
-    }
-
-    .active-surveys-list::-webkit-scrollbar-thumb:hover,
-    .pending-surveys-list::-webkit-scrollbar-thumb:hover {
-        background: #6c757d;
     }
 </style>
-
-{% endblock %}
+{% endblock extra_css %}

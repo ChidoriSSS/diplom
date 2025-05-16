@@ -2,39 +2,52 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.serializers import json
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import IntegrityError
 from django.db.models import Q
 from django.utils import timezone
-from .models import Survey, Respondent, Question, Response, SurveyTemplate, Rater
+from .models import Survey, Respondent, Question, Response, SurveyTemplate, Rater, Notification, AccessRequest
 import numpy
 import logging
 logger = logging.getLogger(__name__)
 from django.utils.translation import gettext_lazy as _
+from django.forms import inlineformset_factory
+
 
 User = get_user_model()
 
 
+class AccessRequestForm(forms.ModelForm):
+    class Meta:
+        model = AccessRequest
+        fields = ['admin', 'comment']  # Теперь поле comment существует
+        widgets = {
+            'admin': forms.Select(attrs={'class': 'form-select'}),
+            'comment': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+                'placeholder': 'Опишите цели оценки'
+            })
+        }
+
+class NotificationForm(forms.ModelForm):
+    class Meta:
+        model = Notification
+        fields = ['message', 'link']
+
 class SurveyForm(forms.ModelForm):
     class Meta:
         model = Survey
-        fields = ['template', 'name', 'description', 'start_date', 'end_date']
+        fields = ['name', 'start_date', 'end_date', 'template']
         widgets = {
             'template': forms.Select(attrs={
                 'class': 'form-select',
                 'required': True
             }),
-            'name': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Введите название опроса'
-            }),
-            'description': forms.Textarea(attrs={
-                'class': 'form-control',
-                'rows': 3,
-                'placeholder': 'Опишите цель опроса'
-            }),
             'start_date': forms.DateInput(attrs={
                 'type': 'date',
-                'class': 'form-control'
+                'class': 'form-control',
+                'min': timezone.now().date().isoformat()
             }),
             'end_date': forms.DateInput(attrs={
                 'type': 'date',
@@ -43,54 +56,127 @@ class SurveyForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        # Удаляем обработку admin_mode
+        self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
-        self.fields['template'].queryset = SurveyTemplate.objects.filter(is_active=True)
-        self.fields['template'].empty_label = "Выберите шаблон"
+
+        if self.user and not self.user.is_superuser:
+            self.fields['template'].queryset = SurveyTemplate.objects.filter(is_active=True)
 
     def clean(self):
         cleaned_data = super().clean()
         start_date = cleaned_data.get('start_date')
         end_date = cleaned_data.get('end_date')
 
-        if start_date and end_date:
-            if start_date < timezone.now().date():
-                raise ValidationError("Дата начала не может быть в прошлом")
-            if end_date <= start_date:
-                raise ValidationError("Дата окончания должна быть позже даты начала")
+        if start_date and end_date and start_date > end_date:
+            raise ValidationError("Дата окончания должна быть позже даты начала")
 
         return cleaned_data
+
 
 class RespondentForm(forms.ModelForm):
     class Meta:
         model = Respondent
-        fields = ['user', 'manager']
+        fields = '__all__'
         widgets = {
-            'user': forms.Select(attrs={'class': 'form-select'}),
-            'manager': forms.Select(attrs={'class': 'form-select'}),
-        }
-
-class QuestionForm(forms.ModelForm):
-    class Meta:
-        model = Question
-        fields = ['text', 'answer_type', 'scale_min', 'scale_max', 'is_required', 'competency']
-        widgets = {
-            'text': forms.Textarea(attrs={
-                'class': 'form-control',
-                'rows': 2
-            }),
-            'answer_type': forms.Select(attrs={'class': 'form-select'}),
-            'scale_min': forms.NumberInput(attrs={'class': 'form-control'}),
-            'scale_max': forms.NumberInput(attrs={'class': 'form-control'}),
-            'competency': forms.Select(attrs={'class': 'form-select'}),
-            'is_required': forms.CheckboxInput(attrs={'class': 'form-check-input'})
+            'user': forms.Select(attrs={'autocomplete': 'off'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Добавляем валидацию для числовых полей
-        self.fields['scale_min'].min_value = 1
-        self.fields['scale_max'].max_value = 10
+        self.fields['user'].queryset = User.objects.all()
+        self.fields['user'].label_from_instance = lambda obj: obj.get_display_name()
+
+class CustomDeleteCheckbox(forms.CheckboxInput):
+    template_name = 'feedback360/custom_delete_checkbox.html'
+
+class QuestionForm(forms.ModelForm):
+    class Meta:
+        model = Question
+        fields = ['text', 'answer_type', 'sort_order', 'scale_min', 'scale_max']
+        widgets = {
+            'text': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 2,
+                'placeholder': 'Введите текст вопроса'
+            }),
+            'answer_type': forms.Select(attrs={'class': 'form-select'}),
+            'sort_order': forms.HiddenInput(),
+            'scale_min': forms.HiddenInput(),
+            'scale_max': forms.HiddenInput()
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.instance.pk:
+            self.initial.update({
+                'sort_order': 0,  # Временное значение (перезапишется во View)
+                'scale_min': 1,
+                'scale_max': 5
+            })
+
+    def clean(self):
+        cleaned_data = super().clean()
+        answer_type = cleaned_data.get('answer_type')
+
+        if answer_type == 'scale':
+            # Принудительная установка значений
+            cleaned_data['scale_min'] = 1
+            cleaned_data['scale_max'] = 5
+
+            # Валидация для случаев ручного изменения через админку/API
+            if (cleaned_data.get('scale_min') != 1 or
+                    cleaned_data.get('scale_max') != 5):
+                raise ValidationError({
+                    'answer_type': "Для шкалы разрешены только значения от 1 до 5"
+                })
+
+QuestionFormSet = inlineformset_factory(
+    SurveyTemplate,
+    Question,
+    form=QuestionForm,
+    fields=('text', 'answer_type', 'sort_order', 'scale_min', 'scale_max'),
+    extra=0,
+    can_delete=True,
+    widgets={
+        'sort_order': forms.HiddenInput,
+        'DELETE': forms.HiddenInput,
+        'scale_min': forms.HiddenInput(),
+        'scale_max': forms.HiddenInput()
+    }
+)
+
+RespondentFormSet = inlineformset_factory(
+    Survey,
+    Respondent,
+    form=RespondentForm,
+    extra=1,
+    can_delete=True,
+    fields=('user',),
+    widgets={
+        'user': forms.Select(attrs={'class': 'form-select'}),
+        'DELETE': forms.HiddenInput()
+    }
+)
+
+
+def clean_sort_order(self):
+    data = self.cleaned_data.get('sort_order')
+    if data and data < 1:
+        raise ValidationError("Порядковый номер не может быть меньше 1")
+    return data
+
+
+
+class SurveyCreationForm(forms.ModelForm):
+    class Meta:
+        model = Survey
+        fields = ['name', 'template', 'start_date', 'end_date']  # Используем существующие поля
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'template': forms.Select(attrs={'class': 'form-select'}),
+            'start_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'end_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
 
 
 class ResponseForm(forms.ModelForm):
@@ -193,24 +279,18 @@ class ScaleResponseForm(ResponseForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Проверяем наличие вопроса
-        if not self.question:
-            raise ValueError("Question is required for ScaleResponseForm")
-
-        # Безопасное получение вариантов ответов
-        default_choices = [
-            ('1', '1 - Никогда'),
-            ('2', '2 - Редко'),
-            ('3', '3 - Иногда'),
-            ('4', '4 - Часто'),
-            ('5', '5 - Всегда')
-        ]
-
-        choices = getattr(self.question, 'scale_choices', None)
-        if isinstance(choices, list) and len(choices) > 0:
-            self.fields['answer_value'].choices = choices
-        else:
-            self.fields['answer_value'].choices = default_choices
+        # Принудительная установка допустимого диапазона
+        self.fields['answer_value'] = forms.IntegerField(
+            widget=forms.NumberInput(attrs={
+                'min': 1,
+                'max': 5,
+                'step': 1
+            }),
+            validators=[
+                MinValueValidator(1),
+                MaxValueValidator(5)
+            ]
+        )
 
 
 class TextResponseForm(ResponseForm):
@@ -296,3 +376,17 @@ class ListResponseForm(forms.ModelForm):
         if commit:
             instance.save()
         return instance
+
+class SurveyTemplateForm(forms.ModelForm):
+    class Meta:
+        model = SurveyTemplate
+        fields = ['name', 'is_active']
+        labels = {
+            'name': 'Название шаблона',
+            'is_active': 'Активен'
+        }
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'})
+        }
+

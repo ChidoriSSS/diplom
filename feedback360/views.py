@@ -1,22 +1,33 @@
-from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import IntegrityError
-from django.db.models import Q
-from django.http import Http404
+from django.core.exceptions import PermissionDenied
+from django.db import transaction
+from django.db.models import ProtectedError, Q, Max
+from django.forms import inlineformset_factory
 from django.views.generic import (
     ListView, DetailView, CreateView,
-    UpdateView, TemplateView
+    UpdateView, TemplateView, DeleteView
 )
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy, reverse
 from django.contrib import messages
 from django.utils import timezone
-from .models import Survey, Respondent, Question, Response, Report, User, Rater, Competency, SurveyTemplate
-from .forms import SurveyForm, RespondentForm, QuestionForm, ResponseForm, RaterAssignmentForm, TextResponseForm, \
-    MultipleChoiceResponseForm, ScaleResponseForm, ListResponseForm
+
+from . import forms
+from .models import Survey, Respondent, Question, Response, Report, User, Rater, SurveyTemplate, \
+    Notification, UserRole, Role, AccessRequest
+from .forms import SurveyForm, QuestionForm, ResponseForm, RaterAssignmentForm, TextResponseForm, \
+    MultipleChoiceResponseForm, ScaleResponseForm, ListResponseForm, QuestionFormSet, RespondentFormSet, \
+    AccessRequestForm, SurveyTemplateForm
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.decorators import login_required
+from .mixins import LeaderRequiredMixin, AdminRequiredMixin, user_has_admin_access, LeaderAccessMixin
+from .utils import copy_questions_from_template
+from django.http import JsonResponse
+from django.urls import reverse_lazy
+
+
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -27,12 +38,6 @@ def profile(request):
         'user': request.user
     })
 
-class AdminRequiredMixin(UserPassesTestMixin):
-    def test_func(self):
-        return user_has_admin_access(self.request.user)
-
-def user_has_admin_access(user):
-    return user.is_superuser or user.userrole_set.filter(role__name='Администратор').exists()
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = 'feedback360/dashboard.html'
@@ -41,6 +46,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         today = timezone.now().date()
         user = self.request.user
+        context['is_employee'] = user.is_employee
 
         # Фильтры
         category = self.request.GET.get('category')
@@ -59,10 +65,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             # Прогресс пользователя
             survey.user_progress = survey.get_user_progress(user)
             # Категории компетенций
-            survey.categories = survey.template.competencies.values_list(
-                'category',
-                flat=True
-            ).distinct()
+
 
         # Фильтрация по категории
         if category:
@@ -89,34 +92,197 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             'total_active': len(active_surveys),
             'surveys_to_complete': pending_raters.order_by('respondent__survey__end_date'),
             'total_pending': pending_raters.count(),
-            'categories': Competency.objects.values_list('category', flat=True).distinct(),
+            'categories': [] ,
             'selected_category': category,
             'sort_mode': sort_by
         })
         return context
 
 
-class SurveyCreateView(AdminRequiredMixin, CreateView):
+class SurveyCreateView(LeaderRequiredMixin, CreateView):
     model = Survey
     form_class = SurveyForm
     template_name = 'feedback360/survey_create.html'
-    success_url = reverse_lazy('survey_list')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['available_templates'] = SurveyTemplate.objects.filter(is_active=True)
+        context['is_admin'] = user_has_admin_access(self.request.user)
+
+        if self.request.POST:
+            context['respondents_formset'] = RespondentFormSet(
+                self.request.POST,
+                prefix='respondents'
+            )
+            context['questions_formset'] = QuestionFormSet(
+                self.request.POST,
+                prefix='questions',
+                queryset=Question.objects.none()
+            )
+        else:
+            context['respondents_formset'] = RespondentFormSet(
+                prefix='respondents',
+                queryset=Respondent.objects.none()
+            )
+            context['questions_formset'] = QuestionFormSet(
+                prefix='questions',
+                queryset=Question.objects.none()
+            )
+
+        return context
+
+    def form_valid(self, form):
+        survey = form.save(commit=False)
+        survey.created_by = self.request.user
+        survey.save()
+
+        # Обработка участников
+        respondents_formset = self.get_context_data()['respondents_formset']
+        if respondents_formset.is_valid():
+            respondents = respondents_formset.save(commit=False)
+            for respondent in respondents:
+                respondent.survey = survey
+                respondent.save()
+
+        # Обработка вопросов
+        questions_formset = self.get_context_data()['questions_formset']
+        if questions_formset.is_valid():
+            questions = questions_formset.save(commit=False)
+            for idx, question in enumerate(questions, start=1):
+                question.survey = survey
+                question.sort_order = idx
+                question.save()
+
+        # Копирование из шаблона (если выбран)
+        if survey.template:
+            Question.copy_from_template(survey.template, survey)
+
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('survey_detail', kwargs={'pk': self.object.pk})
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
         return kwargs
 
-    def form_valid(self, form):
-        form.instance.created_by = self.request.user
-        return super().form_valid(form)
 
-    def form_invalid(self, form):
-        messages.error(
-            self.request,
-            "Пожалуйста, исправьте ошибки в форме",
-            extra_tags='alert-danger'
-        )
+class SurveyQuestionsEditView(UpdateView):
+    model = Survey
+    template_name = 'feedback360/survey_questions_edit.html'
+    fields = []
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        return context
+
+    def post(self, request, *args, **kwargs):
+        survey = self.get_object()
+
+
+        for key, value in request.POST.items():
+            if key.startswith('question_'):
+                q_id = key.split('_')[1]
+                try:
+                    question = Question.objects.get(id=q_id, survey=survey)
+                    question.text = value
+                    question.save()
+                except Question.DoesNotExist:
+                    pass
+
+
+        new_questions = request.POST.getlist('new_questions[]')
+        for q_text in new_questions:
+            if q_text.strip():
+                Question.objects.create(
+                    text=q_text.strip(),
+                    competency=survey.survey_competencies.first(),
+                    answer_type='scale',
+                    sort_order=999
+                )
+
+        return redirect('survey_detail', pk=survey.pk)
+
+
+class SurveyTemplateUpdateView(AdminRequiredMixin, UpdateView):
+    model = SurveyTemplate
+    form_class = SurveyTemplateForm
+    template_name = 'feedback360/template_edit.html'
+    success_url = reverse_lazy('template_list')
+
+    def form_invalid(self, form, formset):
+        logger.error(f"Form errors: {form.errors}")
+        logger.error(f"Formset errors: {formset.errors}")
+        print("Form errors:", form.errors)
+        if hasattr(self, 'formset'):
+            print("Formset errors:", self.formset.errors)
         return super().form_invalid(form)
+
+    def get_formset(self):
+        return inlineformset_factory(
+            SurveyTemplate,
+            Question,
+            form=QuestionForm,
+            fields=('text', 'answer_type', 'sort_order'),
+            extra=1,
+            can_delete=True
+        )
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        form = self.get_form()
+        formset = QuestionFormSet(
+            request.POST,
+            instance=self.object,
+            queryset=self.object.template_questions.all()
+        )
+
+        if form.is_valid() and formset.is_valid():
+            print(formset, request.POST.get)
+            return self.form_valid(form, formset)
+        else:
+            # Логирование ошибок
+            print("Form errors:", form.errors)
+            print("Formset errors:", formset.errors)
+            return self.form_invalid(form, formset)
+
+    @transaction.atomic
+    def form_valid(self, form):
+        context = self.get_context_data(form=form)
+        formset = context['formset']
+
+        if formset.is_valid():
+            self.object = form.save()
+            instances = formset.save(commit=False)
+
+            # 1. Обработка существующих вопросов
+            for i, instance in enumerate(instances):
+                instance.sort_order = int(self.request.POST.get(f'template_questions-{i}-sort_order', i + 1))
+                instance.save()
+
+            # 2. Обработка новых вопросов
+            total_forms = int(self.request.POST.get('template_questions-TOTAL_FORMS', 0))
+            for i in range(total_forms):
+                if not self.request.POST.get(f'template_questions-{i}-id'):
+                    Question.objects.create(
+                        template=self.object,
+                        text=self.request.POST.get(f'template_questions-{i}-text'),
+                        answer_type=self.request.POST.get(f'template_questions-{i}-answer_type', 'scale'),
+                        sort_order=int(self.request.POST.get(f'template_questions-{i}-sort_order', 0)),
+                        scale_min=1,
+                        scale_max=5
+                    )
+
+            # 3. Удаление помеченных вопросов
+            for obj in formset.deleted_objects:
+                obj.delete()
+
+            messages.success(self.request, "Изменения сохранены!")
+            return super().form_valid(form)
+
+        return self.form_invalid(form)
+
 
 class SurveyListView(LoginRequiredMixin, ListView):
     model = Survey
@@ -431,22 +597,24 @@ class SurveyUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
     form_class = SurveyForm
     template_name = 'feedback360/survey_update.html'
 
-    def get_success_url(self):
-        return reverse_lazy('survey_detail', kwargs={'pk': self.object.id})
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def test_func(self):
+        return self.get_object().can_edit(self.request.user)
 
     def form_valid(self, form):
         messages.success(self.request, "Опрос успешно обновлен")
         return super().form_valid(form)
 
-    def test_func(self):
-        survey = self.get_object()
-        return user_has_admin_access(self.request.user) or survey.created_by == self.request.user
-
 
 def add_respondents(request, pk):
     survey = get_object_or_404(Survey, pk=pk)
 
-    if not user_has_admin_access(request.user):
+    if not (user_has_admin_access(request.user) or
+            request.user.userrole_set.filter(role__name='Руководитель').exists()):
         messages.error(request, "У вас нет прав для добавления участников")
         return redirect('survey_detail', pk=survey.id)
 
@@ -486,3 +654,177 @@ def add_respondents(request, pk):
 def custom_404_view(request, exception):
     return render(request, 'feedback360/404.html', status=404)
 
+class LeaderSurveyCreateView(LeaderRequiredMixin, CreateView):
+    model = Survey
+    form_class = SurveyForm
+    template_name = 'feedback360/survey_create.html'
+
+    def form_valid(self, form):
+        form.instance.created_by = self.request.user
+        response = super().form_valid(form)
+        copy_questions_from_template(self.object)
+        return response
+
+class LeaderSurveyUpdateView(LeaderRequiredMixin, UpdateView):
+    model = Survey
+    form_class = SurveyForm
+    template_name = 'feedback360/survey_update.html'
+
+    def get_queryset(self):
+        return super().get_queryset().filter(created_by=self.request.user)
+
+
+def get_template_questions(request, template_id):
+    try:
+        template = SurveyTemplate.objects.get(pk=template_id, is_active=True)
+        questions = []
+        for question in template.template_questions.all().order_by('sort_order'):
+            questions.append({
+                'text': question.text,
+                'answer_type': question.answer_type,
+                'scale_min': question.scale_min,
+                'scale_max': question.scale_max,
+                'scale_choices': question.scale_choices
+            })
+        return JsonResponse({'questions': questions})
+    except SurveyTemplate.DoesNotExist:
+        return JsonResponse({'error': 'Шаблон не найден'}, status=404)
+    except Exception as e:
+        logger.error(f"Ошибка загрузки вопросов: {str(e)}", exc_info=True)
+        return JsonResponse({'error': 'Внутренняя ошибка сервера'}, status=500)
+
+
+class SurveyRequestView(LoginRequiredMixin, CreateView):
+    model = AccessRequest
+    form_class = AccessRequestForm
+    template_name = 'feedback360/survey_request.html'
+
+    def form_valid(self, form):
+        form.instance.requester = self.request.user
+        response = super().form_valid(form)
+
+        # Создаем уведомление для администратора
+        Notification.objects.create(
+            user=form.instance.admin,
+            message=f"Руководитель {self.request.user.get_full_name()} запрашивает права на создание опросов",
+            link=reverse('admin:access_request_detail', args=[self.object.id])
+        )
+        return response
+
+    def get_success_url(self):
+        return reverse('dashboard')
+
+
+class AccessRequestListView(AdminRequiredMixin, ListView):
+    model = AccessRequest
+    template_name = 'feedback360/access_request_list.html'
+    context_object_name = 'requests'
+
+
+class AccessRequestDetailView(AdminRequiredMixin, DetailView):
+    model = AccessRequest
+    template_name = 'feedback360/access_request_detail.html'
+
+    def post(self, request, *args, **kwargs):
+        request_obj = self.get_object()
+        decision = request.POST.get('decision')
+
+        if decision == 'approve':
+            # Выдаем права руководителю
+            role, created = Role.objects.get_or_create(name='Руководитель')
+            UserRole.objects.get_or_create(user=request_obj.requester, role=role)
+
+            # Создаем уведомление
+            Notification.objects.create(
+                user=request_obj.requester,
+                message="Вам были предоставлены права на создание опросов",
+                link=reverse('survey_create')
+            )
+            request_obj.status = 'approved'
+
+        elif decision == 'reject':
+            Notification.objects.create(
+                user=request_obj.requester,
+                message="Ваш запрос на права доступа был отклонен"
+            )
+            request_obj.status = 'rejected'
+
+        request_obj.save()
+        return redirect('access_request_list')
+
+
+class TemplateListView(AdminRequiredMixin, ListView):
+    model = SurveyTemplate
+    template_name = 'feedback360/template_list.html'
+    context_object_name = 'templates'
+
+    def get_queryset(self):
+        return SurveyTemplate.objects.all().prefetch_related('template_questions')
+
+
+class TemplateDeleteView(AdminRequiredMixin, DeleteView):
+    model = SurveyTemplate
+    template_name = 'feedback360/surveytemplate_confirm_delete.html'
+    success_url = reverse_lazy('template_list')
+
+    def delete(self, request, *args, **kwargs):
+        try:
+            return super().delete(request, *args, **kwargs)
+        except ProtectedError:
+            messages.error(request, "Невозможно удалить шаблон, так как он используется в опросах")
+            return redirect('template_list')
+
+
+class TemplateCreateView(AdminRequiredMixin, CreateView):
+    model = SurveyTemplate
+    form_class = SurveyTemplateForm
+    template_name = 'feedback360/template_create.html'
+    success_url = reverse_lazy('template_list')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.POST:
+            context['formset'] = QuestionFormSet(self.request.POST)
+        else:
+            context['formset'] = QuestionFormSet()
+        return context
+
+    def form_valid(self, form):
+        context = self.get_context_data(form=form)
+        formset = context['formset']
+
+        if formset.is_valid():
+            self.object = form.save()
+            formset.instance = self.object
+            formset.save()
+            return super().form_valid(form)
+        else:
+            return self.render_to_response(context)
+
+
+class TemplateUpdateView(AdminRequiredMixin, UpdateView):
+    model = SurveyTemplate
+    form_class = SurveyTemplateForm
+    template_name = 'feedback360/template_edit.html'
+    success_url = reverse_lazy('template_list')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.POST:
+            context['formset'] = QuestionFormSet(
+                self.request.POST,
+                instance=self.object,
+                queryset=self.object.template_questions.all().order_by('sort_order')
+            )
+        else:
+            context['formset'] = QuestionFormSet(
+                instance=self.object,
+                queryset=self.object.template_questions.all().order_by('sort_order')
+            )
+        return context
+
+    def form_valid(self, form):
+        self.object = form.save(commit=False)
+        self.object.is_active = form.cleaned_data['is_active']
+        self.object.save()
+        return super().form_valid(form)

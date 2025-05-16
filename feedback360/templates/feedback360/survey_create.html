@@ -1,4 +1,5 @@
 {% extends 'feedback360/base.html' %}
+{% load static %}
 
 {% block content %}
 <div class="container mt-4">
@@ -7,59 +8,348 @@
             <h3>Создание нового опроса</h3>
         </div>
         <div class="card-body">
-            <form method="post" novalidate>
+            <form method="post" id="survey-form">
                 {% csrf_token %}
 
-                <div class="mb-3">
-                    <label class="form-label">Шаблон опроса*</label>
-                    {{ form.template }}
-                    {% if form.template.errors %}
-                    <div class="invalid-feedback d-block">
-                        {{ form.template.errors|first }}
-                    </div>
-                    {% endif %}
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Название опроса*</label>
-                    {{ form.name }}
-                    {% if form.name.errors %}
-                    <div class="invalid-feedback d-block">
-                        {{ form.name.errors|first }}
-                    </div>
-                    {% endif %}
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Описание</label>
-                    {{ form.description }}
-                </div>
-
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Дата начала*</label>
-                        {{ form.start_date }}
-                        {% if form.start_date.errors %}
-                        <div class="invalid-feedback d-block">
-                            {{ form.start_date.errors|first }}
+                {# Основные параметры #}
+                <div class="mb-4">
+                    <h4>Основные параметры</h4>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">{{ form.name.label }}</label>
+                            {{ form.name }}
                         </div>
+                        <div class="col-md-3">
+                            <label class="form-label">{{ form.start_date.label }}</label>
+                            {{ form.start_date }}
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">{{ form.end_date.label }}</label>
+                            {{ form.end_date }}
+                        </div>
+                    </div>
+                </div>
+
+                {# Участники #}
+                <div class="mb-4">
+                    <h4>Участники опроса</h4>
+                    {{ respondents_formset.management_form }}
+                    <div id="respondents-container" class="mb-3">
+                        {% for form in respondents_formset %}
+                        <div class="card mb-3 respondent-form {% if forloop.first %}prototype d-none{% endif %}">
+                            <div class="card-body">
+                                <div class="row g-3 align-items-center">
+                                    <div class="col-md-10">
+                                        <label class="form-label" for="{{ form.user.id_for_label }}">Участник</label>
+                                        {{ form.user }}
+                                    </div>
+                                    <div class="col-md-2 text-end">
+                                        <button type="button" class="btn btn-danger btn-sm delete-respondent">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                    {{ form.id }}
+                                    <div class="d-none">{{ form.DELETE }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <button type="button"
+                            id="add-respondent"
+                            class="btn btn-secondary">
+                        <i class="bi bi-plus-circle"></i> Добавить участника
+                    </button>
+                </div>
+
+                {# Выбор шаблона #}
+                <div class="mb-4">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <label class="form-label">Основан на шаблоне:</label>
+                            {% if available_templates %}
+                                <select name="template" class="form-select" id="id_template">
+                                    <option value="">---------</option>
+                                    {% for template in available_templates %}
+                                        <option value="{{ template.id }}"
+                                            {% if form.template.value|add:0 == template.id %}selected{% endif %}>
+                                            {{ template.name }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            {% else %}
+                                <div class="alert alert-warning">
+                                    Нет доступных шаблонов. Сначала создайте шаблон.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                {# Вопросы #}
+                <div id="questions-formset" class="mb-4">
+                    <h4>Вопросы опроса</h4>
+                    {{ questions_formset.management_form }}
+                    <div class="questions-container custom-scrollbar">
+                        {% if questions_formset %}
+                            {% for form in questions_formset %}
+                            <div class="card mb-3 question-form {% if forloop.first %}prototype d-none{% endif %}"
+                                 data-question-id="{{ form.instance.id|default:'new' }}">
+                                <div class="card-body">
+                                    <div class="question-header d-flex justify-content-between align-items-center mb-3">
+                                        <span class="question-number badge bg-primary">Вопрос {{ forloop.counter }}</span>
+                                        <button type="button" class="btn btn-danger btn-sm delete-question">
+                                            <i class="bi bi-trash"></i> Удалить
+                                        </button>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Текст вопроса</label>
+                                        {{ form.text }}
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Тип ответа</label>
+                                        {{ form.answer_type }}
+                                    </div>
+
+                                    <div class="d-none">
+                                        {{ form.DELETE }}
+                                        {{ form.id }}
+                                        {{ form.sort_order }}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="alert alert-info">Выберите шаблон или добавьте вопросы вручную</div>
                         {% endif %}
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Дата окончания*</label>
-                        {{ form.end_date }}
-                        {% if form.end_date.errors %}
-                        <div class="invalid-feedback d-block">
-                            {{ form.end_date.errors|first }}
-                        </div>
-                        {% endif %}
+
+                    <div id="form-errors" class="alert alert-danger d-none"></div>
+
+                    {# Блок управления #}
+                    <div class="form-controls d-flex gap-2 mt-3">
+                        <button type="button"
+                                id="add-question"
+                                class="btn btn-secondary">
+                            <i class="bi bi-plus-circle"></i> Добавить вопрос
+                        </button>
+                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                        <a href="{% url 'survey_list' %}" class="btn btn-outline-secondary">Отмена</a>
                     </div>
                 </div>
-
-                <button type="submit" class="btn btn-primary">Создать опрос</button>
-                <a href="{% url 'survey_list' %}" class="btn btn-secondary">Отмена</a>
             </form>
         </div>
     </div>
 </div>
-{% endblock %}
+{% endblock content %}
+
+
+{% block extra_css %}
+<style>
+    .respondent-form .form-select {
+        padding: 12px 15px !important;
+        font-size: 16px !important;
+        min-height: 45px;
+    }
+
+    .delete-respondent {
+        width: 100%;
+        padding: 5px;
+    }
+</style>
+{% endblock extra_css %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // ===== ЛОГИКА ДЛЯ УЧАСТНИКОВ ОПРОСА =====
+    let selectedUsers = new Set();
+    const addRespondentBtn = document.getElementById('add-respondent');
+    const respondentsContainer = document.getElementById('respondents-container');
+    const respondentPrototype = document.querySelector('.respondent-form.prototype');
+
+    function updateParticipantSelects() {
+        document.querySelectorAll('.respondent-form select').forEach(select => {
+            const currentValue = select.value;
+            Array.from(select.options).forEach(option => {
+                option.disabled = selectedUsers.has(option.value) && option.value !== currentValue;
+            });
+        });
+    }
+
+    function addParticipant() {
+        const formCount = parseInt(document.getElementById('id_respondents-TOTAL_FORMS').value);
+        const newForm = respondentPrototype.cloneNode(true);
+
+        newForm.innerHTML = newForm.innerHTML
+            .replace(/respondents-\d+/g, `respondents-${formCount}`)
+            .replace(/__prefix__/g, formCount);
+
+        newForm.classList.remove('prototype', 'd-none');
+        respondentsContainer.appendChild(newForm);
+        document.getElementById('id_respondents-TOTAL_FORMS').value = formCount + 1;
+        initParticipantForm(newForm);
+        updateParticipantSelects();
+    }
+
+    function initParticipantForm(form) {
+        const deleteBtn = form.querySelector('.delete-respondent');
+        const select = form.querySelector('select');
+
+        deleteBtn.addEventListener('click', () => {
+            if (select.value) selectedUsers.delete(select.value);
+            form.remove();
+            document.getElementById('id_respondents-TOTAL_FORMS').value =
+                document.querySelectorAll('.respondent-form:not(.prototype)').length;
+            updateParticipantSelects();
+        });
+
+        select.addEventListener('change', (e) => {
+            const oldValue = select.dataset.prevValue;
+            const newValue = e.target.value;
+            if (oldValue) selectedUsers.delete(oldValue);
+            if (newValue) selectedUsers.add(newValue);
+            select.dataset.prevValue = newValue;
+            updateParticipantSelects();
+        });
+
+        if (select.value) selectedUsers.add(select.value);
+        select.dataset.prevValue = select.value;
+    }
+
+    document.querySelectorAll('.respondent-form:not(.prototype)').forEach(initParticipantForm);
+    addRespondentBtn?.addEventListener('click', addParticipant);
+
+    // ===== ЛОГИКА ДЛЯ ВОПРОСОВ =====
+    const questionsContainer = document.querySelector('.questions-container');
+    const questionPrototype = document.querySelector('.question-form.prototype');
+    const addQuestionBtn = document.getElementById('add-question');
+    const totalQuestionsInput = document.getElementById('id_questions-TOTAL_FORMS');
+
+    // Проверка критических элементов
+    if (!questionsContainer || !questionPrototype || !addQuestionBtn || !totalQuestionsInput) {
+        console.error('Ошибка инициализации: Не найдены элементы управления вопросами');
+        return;
+    }
+
+    // Обновление нумерации вопросов
+    function updateQuestionNumbers() {
+        let visibleIndex = 1;
+        document.querySelectorAll('.question-form:not(.prototype)').forEach(form => {
+            if (form.style.display !== 'none') {
+                const numberElement = form.querySelector('.question-number');
+                const sortOrderInput = form.querySelector('input[name$="-sort_order"]');
+
+                if (numberElement) numberElement.textContent = `Вопрос ${visibleIndex}`;
+                if (sortOrderInput) sortOrderInput.value = visibleIndex;
+
+                visibleIndex++;
+            }
+        });
+    }
+
+    // Удаление вопроса
+    questionsContainer.addEventListener('click', (e) => {
+        if (!e.target.closest('.delete-question')) return;
+
+        const questionForm = e.target.closest('.question-form');
+        const deleteInput = questionForm.querySelector('input[name$="-DELETE"]');
+
+        if (deleteInput) {
+            deleteInput.value = 'on';
+            questionForm.style.display = 'none';
+        } else {
+            questionForm.remove();
+        }
+
+        updateQuestionNumbers();
+        totalQuestionsInput.value = document.querySelectorAll('.question-form:not(.prototype):not([style*="display: none"])').length;
+    });
+
+    // Добавление нового вопроса
+    function addQuestion() {
+        const formCount = totalQuestionsInput.value;
+        const newForm = questionPrototype.cloneNode(true);
+
+        // Очистка полей и установка стилей
+        const textarea = newForm.querySelector('textarea');
+        textarea.value = '';
+        textarea.setAttribute('rows', '2');
+        textarea.classList.add('form-control', 'question-textarea');
+
+        const select = newForm.querySelector('select');
+        select.value = 'scale';
+
+        // Обновление идентификаторов
+        newForm.innerHTML = newForm.innerHTML
+            .replace(/__prefix__/g, formCount)
+            .replace(/questions-\d+/g, `questions-${formCount}`);
+
+        newForm.classList.remove('prototype', 'd-none');
+        questionsContainer.appendChild(newForm);
+
+        // Обновление счетчика
+        totalQuestionsInput.value = parseInt(formCount) + 1;
+        updateQuestionNumbers();
+    }
+
+    addQuestionBtn.addEventListener('click', addQuestion);
+
+    // ===== ЗАГРУЗКА ШАБЛОНОВ =====
+    document.getElementById('id_template')?.addEventListener('change', async function(e) {
+        const templateId = e.target.value;
+        if (!templateId) return;
+
+        try {
+            const response = await fetch(`/surveys/get-template-questions/${templateId}/`);
+            if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+
+            const data = await response.json();
+            questionsContainer.innerHTML = '';
+            totalQuestionsInput.value = data.questions.length;
+
+            data.questions.forEach((q, index) => {
+                const newForm = document.createElement('div');
+                newForm.className = 'card mb-3 question-form';
+                newForm.innerHTML = `
+                    <div class="card-body">
+                        <div class="question-header d-flex justify-content-between align-items-center mb-3">
+                            <span class="question-number badge bg-primary">Вопрос ${index + 1}</span>
+                            <button type="button" class="btn btn-danger btn-sm delete-question">
+                                <i class="bi bi-trash"></i> Удалить
+                            </button>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Текст вопроса</label>
+                            <textarea class="form-control question-textarea" rows="2"
+                                name="questions-${index}-text" required>${q.text}</textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Тип ответа</label>
+                            <select class="form-select" name="questions-${index}-answer_type" required>
+                                <option value="scale" ${q.answer_type === 'scale' ? 'selected' : ''}>Шкала</option>
+                                <option value="text" ${q.answer_type === 'text' ? 'selected' : ''}>Текст</option>
+                            </select>
+                        </div>
+                        <input type="hidden" name="questions-${index}-sort_order" value="${index + 1}">
+                        <input type="hidden" name="questions-${index}-id">
+                        <input type="hidden" name="questions-${index}-DELETE">
+                    </div>
+                `;
+                questionsContainer.appendChild(newForm);
+            });
+
+            updateQuestionNumbers();
+
+        } catch (error) {
+            console.error('Ошибка загрузки:', error);
+            alert('Ошибка загрузки вопросов шаблона');
+        }
+    });
+
+    updateQuestionNumbers();
+});
+</script>
+{% endblock extra_js %}
