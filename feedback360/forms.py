@@ -247,26 +247,6 @@ class ResponseForm(forms.ModelForm):
 
         return instance
 
-class RaterAssignmentForm(forms.Form):
-    raters = forms.ModelMultipleChoiceField(
-        queryset=User.objects.none(),
-        widget=forms.SelectMultiple(attrs={
-            'class': 'form-select',
-            'size': '8',
-            'style': 'min-height: 200px;'
-        })
-    )
-    relationship_type = forms.ChoiceField(
-        choices=Rater.RELATIONSHIP_TYPES,
-        widget=forms.Select(attrs={'class': 'form-select'})
-    )
-
-    def __init__(self, *args, **kwargs):
-        available_users = kwargs.pop('available_users', None)
-        super().__init__(*args, **kwargs)
-        if available_users:
-            self.fields['raters'].queryset = available_users
-
 
 class ScaleResponseForm(ResponseForm):
     def __init__(self, *args, **kwargs):

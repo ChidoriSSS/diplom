@@ -14,9 +14,9 @@ from django.contrib import messages
 from django.utils import timezone
 
 from . import forms
-from .models import Survey, Respondent, Question, Response, Report, User, Rater, SurveyTemplate, \
+from .models import Survey, Respondent, Question, Response, User, Rater, SurveyTemplate, \
     Notification, UserRole, Role, AccessRequest
-from .forms import SurveyForm, QuestionForm, ResponseForm, RaterAssignmentForm, TextResponseForm, \
+from .forms import SurveyForm, QuestionForm, ResponseForm, TextResponseForm, \
     MultipleChoiceResponseForm, ScaleResponseForm, ListResponseForm, QuestionFormSet, RespondentFormSet, \
     AccessRequestForm, SurveyTemplateForm
 from django.db.models.signals import post_save
@@ -445,77 +445,7 @@ class ResponseCreateView(LoginRequiredMixin, CreateView):
         self.rater.status = 'completed'
         self.rater.completed_at = timezone.now()
         self.rater.save()
-        return redirect('assessment_complete')
-
-class AssessmentCompleteView(LoginRequiredMixin, TemplateView):
-    template_name = 'feedback360/assessment_complete.html'
-
-def assign_raters(request, pk):
-    respondent = get_object_or_404(Respondent, pk=pk)
-    survey = respondent.survey
-
-    if not user_has_admin_access(request.user):
-        messages.error(request, "У вас нет прав для назначения оценивающих")
-        return redirect('survey_detail', pk=survey.id)
-
-    available_users = User.objects.exclude(
-        id=respondent.user.id
-    ).exclude(
-        id__in=respondent.raters.values_list('user_id', flat=True)
-    )
-
-    form = RaterAssignmentForm(
-        available_users=available_users,
-        data=request.POST or None
-    )
-
-    if request.method == 'POST' and form.is_valid():
-        for user in form.cleaned_data['raters']:
-            Rater.objects.create(
-                respondent=respondent,
-                user=user,
-                relationship_type=form.cleaned_data['relationship_type']
-            )
-        messages.success(request, "Оценивающие успешно назначены")
-        return redirect('survey_detail', pk=survey.id)
-
-    return render(request, 'feedback360/assign_raters.html', {
-        'respondent': respondent,
-        'survey': survey,
-        'form': form,
-        'available_users': available_users
-    })
-
-
-class ReportView(LoginRequiredMixin, DetailView):
-    model = Report
-    template_name = 'feedback360/report.html'
-    context_object_name = 'report'
-
-    def get_object(self, queryset=None):
-        report = super().get_object(queryset)
-        if report.respondent.user != self.request.user and not self.request.user.is_staff:
-            raise PermissionDenied
-        return report
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        try:
-            context['questions'] = Question.objects.filter(
-                competency__template=self.object.survey.template
-            )
-        except Survey.DoesNotExist:
-            context['questions'] = []
-        return context
-
-@receiver(post_save, sender=Respondent)
-def create_report(sender, instance, created, **kwargs):
-    if created:
-        Report.objects.create(
-            respondent=instance,
-            survey=instance.survey,
-            report_data={'summary': {}, 'details': []}
-        )
+        return redirect('survey_detail', pk=self.rater.respondent.survey.pk)
 
 
 class SurveyUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
@@ -535,47 +465,6 @@ class SurveyUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
         messages.success(self.request, "Опрос успешно обновлен")
         return super().form_valid(form)
 
-
-def add_respondents(request, pk):
-    survey = get_object_or_404(Survey, pk=pk)
-
-    if not (user_has_admin_access(request.user) or
-            request.user.userrole_set.filter(role__name='Руководитель').exists()):
-        messages.error(request, "У вас нет прав для добавления участников")
-        return redirect('survey_detail', pk=survey.id)
-
-    if request.method == 'POST':
-        user_ids = request.POST.getlist('users', [])
-        if not user_ids:
-            messages.warning(request, "Выберите хотя бы одного участника")
-            return redirect('survey_detail', pk=pk)
-
-        users = User.objects.filter(id__in=user_ids)
-        existing_users = survey.respondents.values_list('user_id', flat=True)
-
-        # Создаем только новых участников
-        new_users = users.exclude(id__in=existing_users)
-        created_count = 0
-
-        for user in new_users:
-            Respondent.objects.create(survey=survey, user=user)
-            created_count += 1
-
-        if created_count > 0:
-            messages.success(request, f"Добавлено {created_count} новых участников")
-        else:
-            messages.info(request, "Все выбранные пользователи уже являются участниками")
-
-        return redirect('survey_detail', pk=survey.id)
-
-        # Для GET запроса показываем форму
-    available_users = User.objects.exclude(
-        id__in=survey.respondents.values_list('user_id', flat=True)
-    )
-    return render(request, 'feedback360/add_respondents.html', {
-        'survey': survey,
-        'available_users': available_users
-    })
 
 def custom_404_view(request, exception):
     return render(request, 'feedback360/404.html', status=404)

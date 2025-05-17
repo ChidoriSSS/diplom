@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 from .models import Role, UserRole, SurveyTemplate, Question, Survey, RaterGroup, Respondent, Rater, \
-    Response, Report, User
+    Response, User
 from django.contrib import admin
 from .models import SurveyTemplate
 
@@ -106,17 +106,6 @@ class ResponseAdmin(admin.ModelAdmin):
     list_display = ('rater', 'question', 'answer_value')
     list_filter = ('question__answer_type',)
     search_fields = ('rater__user__username',)
-
-
-@admin.register(Report)
-class ReportAdmin(admin.ModelAdmin):
-    list_display = ('survey', 'respondent', 'generated_at', 'status')
-    readonly_fields = ('generated_at',)
-
-    def status(self, obj):
-        if not obj.report_data:
-            return 'Не сформирован'
-        return f"Сформирован ({obj.generated_at.strftime('%d.%m.%Y')})"
 
 
 # Регистрируем кастомную модель User последней

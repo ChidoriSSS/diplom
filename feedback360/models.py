@@ -300,60 +300,10 @@ class Response(models.Model):
         super().save(*args, **kwargs)
 
 
-class Report(models.Model):
-    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name='reports')
-    respondent = models.ForeignKey(Respondent, on_delete=models.CASCADE, related_name='reports')
-    report_data = models.JSONField()
-    generated_at = models.DateTimeField(auto_now_add=True)
-    generated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='generated_reports')
-
-    class Meta:
-        verbose_name = 'Отчет'
-        verbose_name_plural = 'Отчеты'
-
-    def __str__(self):
-        return f"Отчет по {self.respondent.user.get_full_name()} ({self.survey.name})"
-
-    def generate_report_data(self):
-        """Автоматически генерирует данные отчета"""
-        from django.db.models import Avg
-        responses = Response.objects.filter(rater__respondent=self.respondent)
-
-        # Преобразуем Decimal в float
-        avg_score = responses.aggregate(Avg('answer_value'))['answer_value__avg'] or 0
-        if avg_score:
-            avg_score = float(round(avg_score, 1))
-
-        # Формируем структуру отчета с сериализуемыми типами
-        self.report_data = {
-            'summary': {
-                'average_score': avg_score,
-                'total_questions': responses.count(),
-                'answered_questions': responses.exclude(answer_value__isnull=True).count()
-            },
-            'details': [
-                {
-                    'question': response.question.text,
-                    'answer': float(response.answer_value) if response.answer_value else response.answer_text
-                }
-                for response in responses
-            ]
-        }
-        self.save()
-
 @receiver(post_save, sender=Survey)
 def handle_survey_status_change(sender, instance, **kwargs):
     if instance.status == 'active' and instance.pk:
         instance.send_invitations()
-
-@receiver(post_save, sender=Respondent)
-def create_respondent_report(sender, instance, created, **kwargs):
-    if created:
-        Report.objects.create(
-            respondent=instance,
-            survey=instance.survey,
-            report_data={}
-        )
 
 class AccessRequest(models.Model):
     STATUS_CHOICES = [
