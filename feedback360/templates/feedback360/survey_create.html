@@ -90,10 +90,38 @@
                 <div id="questions-formset" class="mb-4">
                     <h4>Вопросы опроса</h4>
                     {{ questions_formset.management_form }}
+
+                    <!-- Явный прототип вопроса -->
+                    <div class="card mb-3 question-form prototype d-none">
+                        <div class="card-body">
+                            <div class="question-header d-flex justify-content-between align-items-center mb-3">
+                                <span class="question-number badge bg-primary">Вопрос 0</span>
+                                <button type="button" class="btn btn-danger btn-sm delete-question">
+                                    <i class="bi bi-trash"></i> Удалить
+                                </button>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Текст вопроса</label>
+                                <textarea class="form-control" rows="3" name="questions-__prefix__-text" required></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Тип ответа</label>
+                                <select class="form-select" name="questions-__prefix__-answer_type">
+                                    <option value="scale">Шкала</option>
+                                    <option value="text">Текст</option>
+                                </select>
+                            </div>
+                            <input type="hidden" name="questions-__prefix__-sort_order" value="0">
+                            <input type="hidden" name="questions-__prefix__-id">
+                            <input type="hidden" name="questions-__prefix__-DELETE">
+                        </div>
+                    </div>
+
+                    <!-- Контейнер для вопросов -->
                     <div class="questions-container custom-scrollbar">
                         {% if questions_formset %}
                             {% for form in questions_formset %}
-                            <div class="card mb-3 question-form {% if forloop.first %}prototype d-none{% endif %}"
+                            <div class="card mb-3 question-form"
                                  data-question-id="{{ form.instance.id|default:'new' }}">
                                 <div class="card-body">
                                     <div class="question-header d-flex justify-content-between align-items-center mb-3">
@@ -222,15 +250,18 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.respondent-form:not(.prototype)').forEach(initParticipantForm);
     addRespondentBtn?.addEventListener('click', addParticipant);
 
-    // ===== ЛОГИКА ДЛЯ ВОПРОСОВ =====
     const questionsContainer = document.querySelector('.questions-container');
     const questionPrototype = document.querySelector('.question-form.prototype');
     const addQuestionBtn = document.getElementById('add-question');
     const totalQuestionsInput = document.getElementById('id_questions-TOTAL_FORMS');
 
     // Проверка критических элементов
+    if (!questionsContainer) console.error('Не найден контейнер вопросов (.questions-container)');
+    if (!questionPrototype) console.error('Не найден прототип вопроса (.question-form.prototype)');
+    if (!addQuestionBtn) console.error('Не найдена кнопка добавления (#add-question)');
+    if (!totalQuestionsInput) console.error('Не найдено поле questions-TOTAL_FORMS');
+
     if (!questionsContainer || !questionPrototype || !addQuestionBtn || !totalQuestionsInput) {
-        console.error('Ошибка инициализации: Не найдены элементы управления вопросами');
         return;
     }
 
@@ -300,20 +331,29 @@ document.addEventListener('DOMContentLoaded', function() {
     // ===== ЗАГРУЗКА ШАБЛОНОВ =====
     document.getElementById('id_template')?.addEventListener('change', async function(e) {
         const templateId = e.target.value;
-        if (!templateId) return;
+        if (!templateId) {
+            // Используем существующую переменную questionsContainer
+            questionsContainer.innerHTML = '<div class="alert alert-info">Выберите шаблон или добавьте вопросы вручную</div>';
+            totalQuestionsInput.value = 0;
+            return;
+        }
 
         try {
             const response = await fetch(`/surveys/get-template-questions/${templateId}/`);
-            if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+            if (!response.ok) throw new Error(`Ошибка HTTP: ${response.status}`);
 
             const data = await response.json();
+            if (data.status !== 'success') throw new Error(data.message || 'Неизвестная ошибка');
+
+            // Очищаем контейнер
             questionsContainer.innerHTML = '';
             totalQuestionsInput.value = data.questions.length;
 
+            // Добавляем вопросы из шаблона
             data.questions.forEach((q, index) => {
-                const newForm = document.createElement('div');
-                newForm.className = 'card mb-3 question-form';
-                newForm.innerHTML = `
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'card mb-3 question-form';
+                questionDiv.innerHTML = `
                     <div class="card-body">
                         <div class="question-header d-flex justify-content-between align-items-center mb-3">
                             <span class="question-number badge bg-primary">Вопрос ${index + 1}</span>
@@ -323,29 +363,30 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Текст вопроса</label>
-                            <textarea class="form-control question-textarea" rows="2"
-                                name="questions-${index}-text" required>${q.text}</textarea>
+                            <textarea name="questions-${index}-text" class="form-control" rows="3" required>${q.text}</textarea>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Тип ответа</label>
-                            <select class="form-select" name="questions-${index}-answer_type" required>
+                            <select name="questions-${index}-answer_type" class="form-select">
                                 <option value="scale" ${q.answer_type === 'scale' ? 'selected' : ''}>Шкала</option>
                                 <option value="text" ${q.answer_type === 'text' ? 'selected' : ''}>Текст</option>
                             </select>
                         </div>
                         <input type="hidden" name="questions-${index}-sort_order" value="${index + 1}">
-                        <input type="hidden" name="questions-${index}-id">
+                        <input type="hidden" name="questions-${index}-id" value="${q.id}">
                         <input type="hidden" name="questions-${index}-DELETE">
                     </div>
                 `;
-                questionsContainer.appendChild(newForm);
+                questionsContainer.appendChild(questionDiv);
             });
 
-            updateQuestionNumbers();
-
         } catch (error) {
-            console.error('Ошибка загрузки:', error);
-            alert('Ошибка загрузки вопросов шаблона');
+            console.error('Ошибка загрузки вопросов:', error);
+            questionsContainer.innerHTML = `
+                <div class="alert alert-danger">
+                    Ошибка загрузки вопросов: ${error.message}
+                </div>
+            `;
         }
     });
 

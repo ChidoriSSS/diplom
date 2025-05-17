@@ -9,20 +9,116 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{% static 'css/styles.css' %}">
     <style>
+        /* Основные стили для темы */
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #212529;
+            --card-bg: #ffffff;
+            --card-border: #dee2e6;
+            --primary-color: #0d6efd;
+            --navbar-bg: #0d6efd;
+            --footer-bg: #f8f9fa;
+        }
+
+        .dark-theme {
+            --bg-color: #121212;
+            --text-color: #f8f9fa;
+            --card-bg: #1e1e1e;
+            --card-border: #2d2d2d;
+            --primary-color: #3a7bd5;
+            --navbar-bg: #1a1a1a;
+            --footer-bg: #1a1a1a;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .navbar {
+            background-color: var(--navbar-bg) !important;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-color: var(--card-border);
+        }
+
+        footer {
+            background-color: var(--footer-bg) !important;
+            border-top-color: var(--card-border) !important;
+        }
+
+        /* Стили для переключателя темы */
+        .theme-switcher {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .theme-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-color);
+            transition: transform 0.3s;
+        }
+
+        .theme-btn:hover {
+            transform: scale(1.1);
+        }
+
+        /* Остальные стили */
         .table-responsive {
             overflow-x: auto;
         }
+
         footer {
-            background-color: #f8f9fa;
             padding: 20px 0;
             margin-top: 40px;
-            border-top: 1px solid #dee2e6;
+            border-top: 1px solid var(--card-border);
+        }
+
+        /* Исправление маркеров списка */
+        .navbar-nav {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        /* Выравнивание элементов навигации */
+        .nav-link {
+            display: flex !important;
+            align-items: center;
+            padding: 0.5rem 1rem;
+        }
+
+        /* Фикс для выпадающего меню */
+        .dropdown-toggle::after {
+            margin-left: 0.5em;
+            vertical-align: middle;
+        }
+
+        /* Иконки */
+        .bi {
+            font-size: 1.1rem;
+            line-height: 1;
+            vertical-align: -0.125em;
         }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <!-- Переключатель темы -->
+    <div class="theme-switcher">
+        <button id="theme-toggle" class="theme-btn">
+            <i id="theme-icon" class="bi bi-moon"></i>
+        </button>
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="{% url 'dashboard' %}">
                 <i class="bi bi-people-fill me-2"></i>360° Оценка
@@ -117,6 +213,35 @@
         if (modalEl) {
             var modal = new bootstrap.Modal(modalEl);
         }
+
+        // Переключение темы
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const body = document.body;
+
+        // Проверяем сохраненную тему в localStorage
+        const currentTheme = localStorage.getItem('theme');
+
+        if (currentTheme === 'dark') {
+            body.classList.add('dark-theme');
+            themeIcon.classList.remove('bi-moon');
+            themeIcon.classList.add('bi-sun');
+        }
+
+        // Обработчик клика по переключателю
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-theme');
+
+            if (body.classList.contains('dark-theme')) {
+                themeIcon.classList.remove('bi-moon');
+                themeIcon.classList.add('bi-sun');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                themeIcon.classList.remove('bi-sun');
+                themeIcon.classList.add('bi-moon');
+                localStorage.setItem('theme', 'light');
+            }
+        });
     </script>
 
     {% block extra_js %}{% endblock %}
@@ -126,31 +251,3 @@
 </form>
 </body>
 </html>
-
-<style>
-    /* Исправление маркеров списка */
-.navbar-nav {
-    list-style: none;
-    padding-left: 0;
-}
-
-/* Выравнивание элементов навигации */
-.nav-link {
-    display: flex !important;
-    align-items: center;
-    padding: 0.5rem 1rem;
-}
-
-/* Фикс для выпадающего меню */
-.dropdown-toggle::after {
-    margin-left: 0.5em;
-    vertical-align: middle;
-}
-
-/* Иконки */
-.bi {
-    font-size: 1.1rem;
-    line-height: 1;
-    vertical-align: -0.125em;
-}
-</style>

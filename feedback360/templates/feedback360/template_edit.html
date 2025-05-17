@@ -213,19 +213,69 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Удаление вопроса
     function deleteQuestion(questionForm) {
-        const deleteInput = questionForm.querySelector('[name$="-DELETE"]');
-        const card = questionForm.querySelector('.card');
+        const questionId = questionForm.querySelector('[name$="-id"]')?.value;
+        const templateId = {{ object.id }};
 
-        // Установите значение, которое Django точно распознает
-        deleteInput.value = 'on';  // или '1'
+        // Проверяем, есть ли уже запрос на удаление для этого вопроса
+        if (questionForm.dataset.deleting === 'true') return;
+        questionForm.dataset.deleting = 'true';
 
-        // Убедитесь, что поле не disabled
-        deleteInput.disabled = false;
+        // Для новых, несохраненных вопросов - просто удаляем из DOM
+        if (!questionId) {
+            questionForm.remove();
+            updateQuestionOrder();
+            return;
+        }
 
-        card.classList.add('d-none');
+        // Показываем индикатор загрузки
+        const deleteBtn = questionForm.querySelector('.delete-question');
+        const originalHtml = deleteBtn.innerHTML;
+        deleteBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+        deleteBtn.disabled = true;
 
-        // Для отладки - выведем в консоль состояние поля
-        console.log('Delete field:', deleteInput.name, deleteInput.value, deleteInput.disabled);
+        // Отправляем запрос на удаление
+        fetch(`/templates/${templateId}/questions/${questionId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'success') {
+                questionForm.remove();
+                updateQuestionOrder();
+            } else {
+                showError(data.message || 'Неизвестная ошибка при удалении');
+            }
+        })
+        .catch(error => {
+            showError(error.message);
+        })
+        .finally(() => {
+            deleteBtn.innerHTML = originalHtml;
+            deleteBtn.disabled = false;
+            delete questionForm.dataset.deleting;
+        });
+    }
+
+    // Функция для показа ошибки (чтобы избежать дублирования)
+    let isErrorShowing = false;
+    function showError(message) {
+        if (isErrorShowing) return;
+        isErrorShowing = true;
+
+        alert('Ошибка при удалении: ' + message);
+
+        setTimeout(() => {
+            isErrorShowing = false;
+        }, 100);
     }
 
     // Инициализация обработчиков

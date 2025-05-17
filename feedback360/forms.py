@@ -90,6 +90,9 @@ class CustomDeleteCheckbox(forms.CheckboxInput):
     template_name = 'feedback360/custom_delete_checkbox.html'
 
 class QuestionForm(forms.ModelForm):
+    DELETE = forms.BooleanField(
+        required=False,
+        widget=forms.HiddenInput(attrs={'class': 'delete-flag'}))
     class Meta:
         model = Question
         fields = ['text', 'answer_type', 'sort_order', 'scale_min', 'scale_max']
@@ -116,12 +119,9 @@ class QuestionForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        answer_type = cleaned_data.get('answer_type')
-
-        if answer_type == 'scale':
-            # Принудительная установка значений
-            cleaned_data['scale_min'] = 1
-            cleaned_data['scale_max'] = 5
+        if cleaned_data.get('DELETE'):
+            # Пропускаем остальные проверки для удаляемых вопросов
+            return cleaned_data
 
 
 QuestionFormSet = inlineformset_factory(

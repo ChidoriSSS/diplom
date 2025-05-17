@@ -30,6 +30,8 @@ urlpatterns = [
     path('templates/', views.TemplateListView.as_view(), name='template_list'),
     path('templates/<int:pk>/edit/', views.TemplateUpdateView.as_view(), name='template_edit'),
     path('template/<int:pk>/delete/', views.TemplateDeleteView.as_view(), name='template_delete'),
+    path('templates/<int:template_pk>/questions/<int:question_pk>/delete/', views.QuestionDeleteView.as_view(), name='template_question_delete'),
+    path('surveys/get-template-questions/<int:template_id>/', views.get_template_questions, name='get_template_questions'),
 
 ]
 

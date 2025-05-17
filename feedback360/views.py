@@ -2,6 +2,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import ProtectedError, Q, Max
 from django.forms import inlineformset_factory
+from django.views import View
 from django.views.generic import (
     ListView, DetailView, CreateView,
     UpdateView, TemplateView, DeleteView
@@ -25,6 +26,9 @@ from .mixins import LeaderRequiredMixin, AdminRequiredMixin, user_has_admin_acce
 from .utils import copy_questions_from_template
 from django.http import JsonResponse
 from django.urls import reverse_lazy
+from django.views import View
+from django.contrib.auth.mixins import LoginRequiredMixin
+
 
 
 
@@ -598,22 +602,19 @@ class LeaderSurveyUpdateView(LeaderRequiredMixin, UpdateView):
 
 def get_template_questions(request, template_id):
     try:
-        template = SurveyTemplate.objects.get(pk=template_id, is_active=True)
-        questions = []
-        for question in template.template_questions.all().order_by('sort_order'):
-            questions.append({
-                'text': question.text,
-                'answer_type': question.answer_type,
-                'scale_min': question.scale_min,
-                'scale_max': question.scale_max,
-                'scale_choices': question.scale_choices
-            })
-        return JsonResponse({'questions': questions})
+        template = SurveyTemplate.objects.get(pk=template_id)
+        questions = template.template_questions.order_by('sort_order').values(
+            'id', 'text', 'answer_type', 'sort_order'
+        )
+        return JsonResponse({
+            'status': 'success',
+            'questions': list(questions)
+        })
     except SurveyTemplate.DoesNotExist:
-        return JsonResponse({'error': 'Шаблон не найден'}, status=404)
-    except Exception as e:
-        logger.error(f"Ошибка загрузки вопросов: {str(e)}", exc_info=True)
-        return JsonResponse({'error': 'Внутренняя ошибка сервера'}, status=500)
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Шаблон не найден'
+        }, status=404)
 
 
 class SurveyRequestView(LoginRequiredMixin, CreateView):
@@ -749,37 +750,54 @@ class TemplateUpdateView(AdminRequiredMixin, UpdateView):
 
     @transaction.atomic
     def form_valid(self, form):
-        print("Raw POST data:")
-        for key, value in self.request.POST.items():
-            if 'DELETE' in key:
-                print(f"{key} = {value}")
         context = self.get_context_data()
         formset = context['formset']
 
-        # Проверяем, какие формы помечены на удаление
-        print("Forms marked for deletion:")
-        for i, form in enumerate(formset):
-            print(f"Form {i}: DELETE={form['DELETE'].value()}, id={form.instance.id if form.instance else 'new'}")
-
         if not formset.is_valid():
-            print("Formset errors:", formset.errors)
             return self.form_invalid(form)
 
         self.object = form.save()
 
-        # Обрабатываем удаление
+        # Обработка удаления вопросов
+        deleted_questions = []
         for form in formset:
             if form.cleaned_data.get('DELETE'):
                 if form.instance.pk:
-                    print(f"Deleting question ID: {form.instance.pk}")
+                    deleted_questions.append(form.instance.pk)
                     form.instance.delete()
 
-        # Сохраняем оставшиеся вопросы
+        # Обновление порядка оставшихся вопросов
         for i, form in enumerate(formset):
-            if not form.cleaned_data.get('DELETE', False):
+            if not form.cleaned_data.get('DELETE', False) and form.has_changed():
                 instance = form.save(commit=False)
                 instance.sort_order = i + 1
                 instance.save()
-                print(f"Saved question ID: {instance.pk}, order: {instance.sort_order}")
+
+        # Добавляем сообщение об успешном удалении
+        if deleted_questions:
+            messages.success(
+                self.request,
+                f"Удалено вопросов: {len(deleted_questions)}"
+            )
 
         return super().form_valid(form)
+
+class QuestionDeleteView(AdminRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        try:
+            question = Question.objects.get(
+                pk=kwargs['question_pk'],
+                template_id=kwargs['template_pk']
+            )
+            question.delete()
+            return JsonResponse({'status': 'success'})
+        except Question.DoesNotExist:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Вопрос не найден'},
+                status=404
+            )
+        except Exception as e:
+            return JsonResponse(
+                {'status': 'error', 'message': str(e)},
+                status=500
+            )
