@@ -11,7 +11,6 @@
                 Редактирование шаблона: {{object.name}}
             </h4>
         </div>
-
         <div class="card-body">
             <form method="post" novalidate id="template-form">
                 {% csrf_token %}
@@ -42,13 +41,13 @@
 
                     <!-- Существующие вопросы -->
                     {% for form in formset %}
-                    <div class="question-form{% if form.DELETE.value %} d-none{% endif %}">
+                    <div class="question-form">
                         {{ form.DELETE|add_class:"d-none" }}
-                        <div class="card mb-3">
+                        <div class="card mb-3{% if form.DELETE.value %} d-none{% endif %}">
                             <div class="card-body">
                                 <div class="question-counter">Вопрос {{ forloop.counter }}</div>
                                 {{ form.id }}
-                                {{ form.sort_order|add_class:"d-none" }} <!-- Исправлено -->
+                                {{ form.sort_order|add_class:"d-none" }}
                                 {{ form.scale_min|attr:"data-scale:min" }}
                                 {{ form.scale_max|attr:"data-scale:max" }}
 
@@ -86,7 +85,7 @@
                             <div class="card-body">
                                 <div class="question-counter">Вопрос <span>0</span></div>
                                 <input type="hidden" name="template_questions-__prefix__-id">
-                                <input type="hidden" name="template_questions-__prefix__-DELETE">
+                                <input type="hidden" name="template_questions-__prefix__-DELETE" id="id_template_questions-__prefix__-DELETE">
                                 {{ formset.empty_form.sort_order|add_class:"d-none" }} <!-- Добавлено -->
                                 {{ formset.empty_form.scale_min|attr:"data-scale:min" }}
                                 {{ formset.empty_form.scale_max|attr:"data-scale:max" }}
@@ -131,37 +130,12 @@
                         Отмена
                     </a>
                 </div>
-
-                <!-- Отладочная информация -->
-                <div class="mt-4 p-3 bg-light">
-                    <h6>Фактический порядок в БД:</h6>
-                    {% if object.template_questions.exists %}
-                        {% for question in object.template_questions.all|dictsort:"sort_order" %}
-                            <div>Вопрос {{ forloop.counter }}: {{ question.text }} (sort_order={{ question.sort_order }})</div>
-                        {% endfor %}
-                    {% else %}
-                        <div>Вопросы отсутствуют</div>
-                    {% endif %}
-                </div>
-
-
-                <div class="mt-4 p-3 bg-light">
-                    <h6>Данные формсета:</h6>
-                    <pre>{% for form in formset %}{{ form.data }}{% endfor %}</pre>
-                    <h6>Переданные значения sort_order:</h6>
-                    <div id="debug-output" class="text-muted small">
-                        {% for key, value in request.POST.items %}
-                            {% if "sort_order" in key %}
-                                {{ key }}: {{ value }}<br>
-                            {% endif %}
-                        {% endfor %}
-                    </div>
-                </div>
             </form>
         </div>
     </div>
 </div>
 {% endblock content %}
+
 
 {% block extra_css %}
 <style>
@@ -238,14 +212,51 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     // Удаление вопроса
-    const deleteQuestion = (questionElement) => {
-        const deleteInput = questionElement.querySelector('[name$="-DELETE"]');
-        if (deleteInput) {
-            deleteInput.value = 'on';
-            questionElement.classList.add('d-none');
+    function deleteQuestion(questionForm) {
+        const deleteInput = questionForm.querySelector('[name$="-DELETE"]');
+        const card = questionForm.querySelector('.card');
+
+        // Установите значение, которое Django точно распознает
+        deleteInput.value = 'on';  // или '1'
+
+        // Убедитесь, что поле не disabled
+        deleteInput.disabled = false;
+
+        card.classList.add('d-none');
+
+        // Для отладки - выведем в консоль состояние поля
+        console.log('Delete field:', deleteInput.name, deleteInput.value, deleteInput.disabled);
+    }
+
+    // Инициализация обработчиков
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.delete-question').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const questionForm = this.closest('.question-form');
+                deleteQuestion(questionForm);
+            });
+        });
+    });
+
+    // Для динамически добавленных элементов используйте делегирование событий
+    document.getElementById('questions-formset').addEventListener('click', function(e) {
+        if (e.target.classList.contains('delete-question') ||
+            e.target.closest('.delete-question')) {
+            const btn = e.target.classList.contains('delete-question') ?
+                       e.target : e.target.closest('.delete-question');
+            const questionForm = btn.closest('.question-form');
+            deleteQuestion(questionForm);
         }
-        updateQuestionOrder();
-    };
+    });
+
+
+    // Инициализация обработчиков
+    document.querySelectorAll('.delete-question').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const questionForm = this.closest('.question-form');
+            deleteQuestion(questionForm);
+        });
+    });
 
     // Инициализация обработчиков для вопроса
     const initQuestionHandlers = (questionElement) => {
@@ -265,7 +276,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (deleteBtn) {
             deleteBtn.addEventListener('click', (e) => {
                 e.preventDefault();
-                deleteQuestion(questionElement);
+                if (confirm('Вы уверены, что хотите удалить этот вопрос?')) {
+                    deleteQuestion(questionElement);
+                }
             });
         }
     };

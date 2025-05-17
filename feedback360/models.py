@@ -68,7 +68,7 @@ class Question(models.Model):
 
     class Meta:
         ordering = ['sort_order']
-        #unique_together = ('template', 'sort_order')
+        unique_together = ('template', 'sort_order')
 
     def save(self, *args, **kwargs):
         if self.answer_type == 'scale':

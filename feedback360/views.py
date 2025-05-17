@@ -205,84 +205,6 @@ class SurveyQuestionsEditView(UpdateView):
         return redirect('survey_detail', pk=survey.pk)
 
 
-class SurveyTemplateUpdateView(AdminRequiredMixin, UpdateView):
-    model = SurveyTemplate
-    form_class = SurveyTemplateForm
-    template_name = 'feedback360/template_edit.html'
-    success_url = reverse_lazy('template_list')
-
-    def form_invalid(self, form, formset):
-        logger.error(f"Form errors: {form.errors}")
-        logger.error(f"Formset errors: {formset.errors}")
-        print("Form errors:", form.errors)
-        if hasattr(self, 'formset'):
-            print("Formset errors:", self.formset.errors)
-        return super().form_invalid(form)
-
-    def get_formset(self):
-        return inlineformset_factory(
-            SurveyTemplate,
-            Question,
-            form=QuestionForm,
-            fields=('text', 'answer_type', 'sort_order'),
-            extra=1,
-            can_delete=True
-        )
-
-    def post(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        form = self.get_form()
-        formset = QuestionFormSet(
-            request.POST,
-            instance=self.object,
-            queryset=self.object.template_questions.all()
-        )
-
-        if form.is_valid() and formset.is_valid():
-            print(formset, request.POST.get)
-            return self.form_valid(form, formset)
-        else:
-            # Логирование ошибок
-            print("Form errors:", form.errors)
-            print("Formset errors:", formset.errors)
-            return self.form_invalid(form, formset)
-
-    @transaction.atomic
-    def form_valid(self, form):
-        context = self.get_context_data(form=form)
-        formset = context['formset']
-
-        if formset.is_valid():
-            self.object = form.save()
-            instances = formset.save(commit=False)
-
-            # 1. Обработка существующих вопросов
-            for i, instance in enumerate(instances):
-                instance.sort_order = int(self.request.POST.get(f'template_questions-{i}-sort_order', i + 1))
-                instance.save()
-
-            # 2. Обработка новых вопросов
-            total_forms = int(self.request.POST.get('template_questions-TOTAL_FORMS', 0))
-            for i in range(total_forms):
-                if not self.request.POST.get(f'template_questions-{i}-id'):
-                    Question.objects.create(
-                        template=self.object,
-                        text=self.request.POST.get(f'template_questions-{i}-text'),
-                        answer_type=self.request.POST.get(f'template_questions-{i}-answer_type', 'scale'),
-                        sort_order=int(self.request.POST.get(f'template_questions-{i}-sort_order', 0)),
-                        scale_min=1,
-                        scale_max=5
-                    )
-
-            # 3. Удаление помеченных вопросов
-            for obj in formset.deleted_objects:
-                obj.delete()
-
-            messages.success(self.request, "Изменения сохранены!")
-            return super().form_valid(form)
-
-        return self.form_invalid(form)
-
 
 class SurveyListView(LoginRequiredMixin, ListView):
     model = Survey
@@ -814,17 +736,50 @@ class TemplateUpdateView(AdminRequiredMixin, UpdateView):
             context['formset'] = QuestionFormSet(
                 self.request.POST,
                 instance=self.object,
-                queryset=self.object.template_questions.all().order_by('sort_order')
+                queryset=self.object.template_questions.order_by('sort_order'),
+                prefix='template_questions'
             )
         else:
             context['formset'] = QuestionFormSet(
+                self.request.POST or None,
                 instance=self.object,
-                queryset=self.object.template_questions.all().order_by('sort_order')
+                prefix='template_questions'
             )
         return context
 
+    @transaction.atomic
     def form_valid(self, form):
-        self.object = form.save(commit=False)
-        self.object.is_active = form.cleaned_data['is_active']
-        self.object.save()
+        print("Raw POST data:")
+        for key, value in self.request.POST.items():
+            if 'DELETE' in key:
+                print(f"{key} = {value}")
+        context = self.get_context_data()
+        formset = context['formset']
+
+        # Проверяем, какие формы помечены на удаление
+        print("Forms marked for deletion:")
+        for i, form in enumerate(formset):
+            print(f"Form {i}: DELETE={form['DELETE'].value()}, id={form.instance.id if form.instance else 'new'}")
+
+        if not formset.is_valid():
+            print("Formset errors:", formset.errors)
+            return self.form_invalid(form)
+
+        self.object = form.save()
+
+        # Обрабатываем удаление
+        for form in formset:
+            if form.cleaned_data.get('DELETE'):
+                if form.instance.pk:
+                    print(f"Deleting question ID: {form.instance.pk}")
+                    form.instance.delete()
+
+        # Сохраняем оставшиеся вопросы
+        for i, form in enumerate(formset):
+            if not form.cleaned_data.get('DELETE', False):
+                instance = form.save(commit=False)
+                instance.sort_order = i + 1
+                instance.save()
+                print(f"Saved question ID: {instance.pk}, order: {instance.sort_order}")
+
         return super().form_valid(form)

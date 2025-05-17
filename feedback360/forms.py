@@ -123,12 +123,6 @@ class QuestionForm(forms.ModelForm):
             cleaned_data['scale_min'] = 1
             cleaned_data['scale_max'] = 5
 
-            # Валидация для случаев ручного изменения через админку/API
-            if (cleaned_data.get('scale_min') != 1 or
-                    cleaned_data.get('scale_max') != 5):
-                raise ValidationError({
-                    'answer_type': "Для шкалы разрешены только значения от 1 до 5"
-                })
 
 QuestionFormSet = inlineformset_factory(
     SurveyTemplate,
@@ -138,8 +132,7 @@ QuestionFormSet = inlineformset_factory(
     extra=0,
     can_delete=True,
     widgets={
-        'sort_order': forms.HiddenInput,
-        'DELETE': forms.HiddenInput,
+        'sort_order': forms.HiddenInput(),
         'scale_min': forms.HiddenInput(),
         'scale_max': forms.HiddenInput()
     }
