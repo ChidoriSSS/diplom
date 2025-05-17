@@ -6,7 +6,6 @@
         <h2>Управление шаблонами</h2>
         {% if perms.feedback360.can_manage_templates %}
         <div class="btn-group">
-            <!-- Исправленная кнопка создания -->
             <a href="{% url 'template_create' %}" class="btn btn-primary">
                 <i class="bi bi-plus-circle"></i> Новый шаблон
             </a>
@@ -14,13 +13,13 @@
         {% endif %}
     </div>
 
-    <div class="list-group">
+    <div class="list-group custom-list-group">
         {% for template in templates %}
-        <div class="list-group-item {% if not template.is_active %}list-group-item-secondary{% endif %}">
+        <div class="list-group-item custom-list-item {% if not template.is_active %}custom-list-item-inactive{% endif %}">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h5>{{ template.name }}</h5>
-                    <small class="text-muted">
+                    <small class="text-muted custom-text-muted">
                         Создан: {{ template.created_at|date:"d.m.Y" }} |
                         Вопросов: {{ template.template_questions.count }} |
                         Статус: {% if template.is_active %}Активен{% else %}Неактивен{% endif %}
@@ -28,12 +27,10 @@
                 </div>
                 {% if perms.feedback360.can_manage_templates %}
                 <div class="btn-group">
-                    <!-- Исправленная кнопка редактирования -->
                     <a href="{% url 'template_edit' template.pk %}"
                        class="btn btn-sm btn-outline-primary">
                         Редактировать
                     </a>
-                    <!-- Добавить кнопку удаления -->
                     <a href="{% url 'template_delete' template.pk %}"
                        class="btn btn-sm btn-danger">
                         <i class="bi bi-trash"></i>
@@ -43,8 +40,56 @@
             </div>
         </div>
         {% empty %}
-        <div class="alert alert-info">Нет доступных шаблонов</div>
+        <div class="alert alert-info custom-alert-info">Нет доступных шаблонов</div>
         {% endfor %}
     </div>
 </div>
+
+<style>
+    /* Стили для списка шаблонов */
+    .custom-list-group {
+        --bs-list-group-bg: var(--list-group-bg);
+        --bs-list-group-border-color: var(--list-group-border);
+        --bs-list-group-color: var(--list-group-text);
+    }
+
+    .custom-list-item {
+        background-color: var(--list-group-bg);
+        border-color: var(--list-group-border);
+        color: var(--list-group-text);
+    }
+
+    .custom-list-item:hover {
+        background-color: var(--list-group-hover-bg);
+    }
+
+    .custom-list-item-inactive {
+        background-color: var(--list-group-secondary-bg) !important;
+    }
+
+    .custom-text-muted {
+        color: var(--text-muted-color) !important;
+    }
+
+    .custom-alert-info {
+        --bs-alert-bg: var(--alert-info-bg);
+        --bs-alert-border-color: var(--alert-info-border);
+        --bs-alert-color: var(--alert-info-text);
+    }
+
+    /* Добавьте в :root и .dark-theme */
+    :root {
+        --text-muted-color: #6c757d;
+        --alert-info-bg: #d1ecf1;
+        --alert-info-border: #bee5eb;
+        --alert-info-text: #0c5460;
+    }
+
+    .dark-theme {
+        --text-muted-color: #adb5bd;
+        --alert-info-bg: #1a3a5a;
+        --alert-info-border: #1a3a5a;
+        --alert-info-text: #e2e8f0;
+    }
+</style>
 {% endblock %}

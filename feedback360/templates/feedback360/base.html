@@ -18,6 +18,11 @@
             --primary-color: #0d6efd;
             --navbar-bg: #0d6efd;
             --footer-bg: #f8f9fa;
+            --list-group-bg: #ffffff;
+            --list-group-border: rgba(0, 0, 0, 0.125);
+            --list-group-hover-bg: #f8f9fa;
+            --list-group-secondary-bg: #e9ecef;
+            --list-group-text: #212529;
         }
 
         .dark-theme {
@@ -28,6 +33,11 @@
             --primary-color: #3a7bd5;
             --navbar-bg: #1a1a1a;
             --footer-bg: #1a1a1a;
+            --list-group-bg: #1e1e1e;
+            --list-group-border: #2d2d2d;
+            --list-group-hover-bg: #2d2d2d;
+            --list-group-secondary-bg: #2d2d2d;
+            --list-group-text: #f8f9fa;
         }
 
         body {
@@ -53,7 +63,7 @@
         /* Стили для переключателя темы */
         .theme-switcher {
             position: fixed;
-            top: 20px;
+            top: 6px;
             right: 20px;
             z-index: 1000;
         }
@@ -103,7 +113,7 @@
 
         /* Иконки */
         .bi {
-            font-size: 1.1rem;
+            font-size: 1.5rem;
             line-height: 1;
             vertical-align: -0.125em;
         }
@@ -232,6 +242,10 @@
         themeToggle.addEventListener('click', () => {
             body.classList.toggle('dark-theme');
 
+            // Обновляем атрибут data-bs-theme для Bootstrap
+            const theme = body.classList.contains('dark-theme') ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-bs-theme', theme);
+
             if (body.classList.contains('dark-theme')) {
                 themeIcon.classList.remove('bi-moon');
                 themeIcon.classList.add('bi-sun');
@@ -242,6 +256,16 @@
                 localStorage.setItem('theme', 'light');
             }
         });
+
+        // При загрузке страницы
+        if (currentTheme === 'dark') {
+            body.classList.add('dark-theme');
+            document.documentElement.setAttribute('data-bs-theme', 'dark');
+            themeIcon.classList.remove('bi-moon');
+            themeIcon.classList.add('bi-sun');
+        } else {
+            document.documentElement.setAttribute('data-bs-theme', 'light');
+        }
     </script>
 
     {% block extra_js %}{% endblock %}
