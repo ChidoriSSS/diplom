@@ -77,9 +77,9 @@ class Question(models.Model):
         super().save(*args, **kwargs)
 
     def clean(self):
-        # Уберите принудительную установку значений, оставьте только валидацию
-        if self.answer_type == 'scale' and (self.scale_min != 1 or self.scale_max != 5):
-            raise ValidationError("Для шкалы допустимы только значения 1 и 5")
+        if self.answer_type == 'scale':
+            self.scale_min = 1
+            self.scale_max = 5
 
     class Meta:
         verbose_name = 'Вопрос'

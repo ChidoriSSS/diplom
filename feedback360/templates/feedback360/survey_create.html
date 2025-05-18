@@ -193,17 +193,49 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // ===== ЛОГИКА ДЛЯ УЧАСТНИКОВ ОПРОСА =====
-    let selectedUsers = new Set();
     const addRespondentBtn = document.getElementById('add-respondent');
     const respondentsContainer = document.getElementById('respondents-container');
     const respondentPrototype = document.querySelector('.respondent-form.prototype');
 
+    // Получаем все возможные опции пользователей из первого select
+    const firstSelect = document.querySelector('.respondent-form select');
+    const allUserOptions = firstSelect ? Array.from(firstSelect.options) : [];
+
     function updateParticipantSelects() {
+        // Собираем всех выбранных пользователей
+        const selectedUsers = new Set();
+        document.querySelectorAll('.respondent-form select').forEach(select => {
+            if (select.value) selectedUsers.add(select.value);
+        });
+
+        // Обновляем все select-элементы
         document.querySelectorAll('.respondent-form select').forEach(select => {
             const currentValue = select.value;
-            Array.from(select.options).forEach(option => {
-                option.disabled = selectedUsers.has(option.value) && option.value !== currentValue;
+
+            // Сохраняем выбранное значение
+            const selectedOption = select.selectedIndex >= 0 ? select.options[select.selectedIndex] : null;
+
+            // Очищаем options
+            select.innerHTML = '';
+
+            // Добавляем пустую опцию
+            const emptyOption = document.createElement('option');
+            emptyOption.value = '';
+            emptyOption.textContent = '---------';
+            select.appendChild(emptyOption);
+
+            // Добавляем доступных пользователей
+            allUserOptions.forEach(option => {
+                if (option.value && (!selectedUsers.has(option.value) || option.value === currentValue)) {
+                    const newOption = option.cloneNode(true);
+                    select.appendChild(newOption);
+                }
             });
+
+            // Восстанавливаем выбранное значение
+            if (currentValue) {
+                select.value = currentValue;
+            }
         });
     }
 
@@ -226,30 +258,26 @@ document.addEventListener('DOMContentLoaded', function() {
         const deleteBtn = form.querySelector('.delete-respondent');
         const select = form.querySelector('select');
 
-        deleteBtn.addEventListener('click', () => {
-            if (select.value) selectedUsers.delete(select.value);
+        deleteBtn.addEventListener('click', function() {
             form.remove();
             document.getElementById('id_respondents-TOTAL_FORMS').value =
                 document.querySelectorAll('.respondent-form:not(.prototype)').length;
             updateParticipantSelects();
         });
 
-        select.addEventListener('change', (e) => {
-            const oldValue = select.dataset.prevValue;
-            const newValue = e.target.value;
-            if (oldValue) selectedUsers.delete(oldValue);
-            if (newValue) selectedUsers.add(newValue);
-            select.dataset.prevValue = newValue;
-            updateParticipantSelects();
-        });
-
-        if (select.value) selectedUsers.add(select.value);
-        select.dataset.prevValue = select.value;
+        select.addEventListener('change', updateParticipantSelects);
     }
 
+    // Инициализация существующих форм
     document.querySelectorAll('.respondent-form:not(.prototype)').forEach(initParticipantForm);
-    addRespondentBtn?.addEventListener('click', addParticipant);
+    if (addRespondentBtn) {
+        addRespondentBtn.addEventListener('click', addParticipant);
+    }
 
+    // Инициализация при загрузке
+    updateParticipantSelects();
+
+    // Остальной JavaScript код (для вопросов) остается без изменений
     const questionsContainer = document.querySelector('.questions-container');
     const questionPrototype = document.querySelector('.question-form.prototype');
     const addQuestionBtn = document.getElementById('add-question');

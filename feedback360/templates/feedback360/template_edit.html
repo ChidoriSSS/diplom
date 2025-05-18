@@ -168,6 +168,16 @@ document.addEventListener('DOMContentLoaded', function() {
     errorContainer.innerHTML = `<h5 class="alert-heading">Ошибки заполнения:</h5><div class="errors-list"></div>`;
     form.prepend(errorContainer);
 
+    // Функция обновления management_form
+    const updateManagementForm = () => {
+        const totalFormsInput = form.querySelector('[name$="-TOTAL_FORMS"]');
+        const visibleQuestions = document.querySelectorAll('.question-form:not(.prototype):not(.d-none)');
+        if (totalFormsInput) {
+            totalFormsInput.value = visibleQuestions.length;
+            console.log(`TOTAL_FORMS updated to: ${totalFormsInput.value}`);
+        }
+    };
+
     // Основная функция обновления порядка
     const updateQuestionOrder = () => {
         const visibleQuestions = Array.from(
@@ -181,16 +191,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (orderInput) {
                 orderInput.value = questionNumber;
                 question.querySelector('.question-counter').textContent = `Вопрос ${questionNumber}`;
-                console.log(`Updated question ${index + 1}: sort_order=${orderInput.value}`); // Debug
+                console.log(`Updated question ${index + 1}: sort_order=${orderInput.value}`);
             }
         });
 
-        // Форсируем изменение TOTAL_FORMS
-        const totalFormsInput = form.querySelector('[name$="-TOTAL_FORMS"]');
-        if (totalFormsInput) {
-            totalFormsInput.value = visibleQuestions.length;
-            console.log(`TOTAL_FORMS updated to: ${totalFormsInput.value}`); // Debug
-        }
+        updateManagementForm(); // Добавлен вызов обновления management form
     };
 
     // Добавление нового вопроса
@@ -201,71 +206,118 @@ document.addEventListener('DOMContentLoaded', function() {
         const newQuestion = prototype.cloneNode(true);
         newQuestion.classList.remove('prototype', 'd-none');
 
-        // Заменяем __prefix__ на текущее количество вопросов
         newQuestion.innerHTML = newQuestion.innerHTML.replace(/__prefix__/g,
             document.querySelectorAll('.question-form:not(.prototype)').length
         );
+
+        // Устанавливаем значения по умолчанию для шкалы
+        const scaleInputs = newQuestion.querySelectorAll('[data-scale]');
+        scaleInputs.forEach(input => {
+            if (input.dataset.scale === 'min') input.value = '1';
+            if (input.dataset.scale === 'max') input.value = '5';
+        });
 
         questionsContainer.insertBefore(newQuestion, addButton.parentElement);
         initQuestionHandlers(newQuestion);
         updateQuestionOrder();
     };
 
-    // Удаление вопроса
-    function deleteQuestion(questionForm) {
-        const questionId = questionForm.querySelector('[name$="-id"]')?.value;
-        const templateId = {{ object.id }};
+    // Функция подтверждения удаления
+    async function confirmDelete() {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal fade show';
+            modal.style.display = 'block';
+            modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
+            modal.style.zIndex = '1050';
+            modal.innerHTML = `
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Подтверждение удаления</h5>
+                        </div>
+                        <div class="modal-body">
+                            Вы уверены, что хотите удалить этот вопрос?
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" id="cancel-delete">Отмена</button>
+                            <button type="button" class="btn btn-danger" id="confirm-delete">Удалить</button>
+                        </div>
+                    </div>
+                </div>
+            `;
 
-        // Проверяем, есть ли уже запрос на удаление для этого вопроса
-        if (questionForm.dataset.deleting === 'true') return;
-        questionForm.dataset.deleting = 'true';
+            document.body.appendChild(modal);
 
-        // Для новых, несохраненных вопросов - просто удаляем из DOM
-        if (!questionId) {
-            questionForm.remove();
-            updateQuestionOrder();
-            return;
-        }
+            document.getElementById('confirm-delete').addEventListener('click', () => {
+                modal.remove();
+                resolve(true);
+            });
 
-        // Показываем индикатор загрузки
-        const deleteBtn = questionForm.querySelector('.delete-question');
-        const originalHtml = deleteBtn.innerHTML;
-        deleteBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
-        deleteBtn.disabled = true;
-
-        // Отправляем запрос на удаление
-        fetch(`/templates/${templateId}/questions/${questionId}/delete/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                'Accept': 'application/json'
-            }
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.status === 'success') {
-                questionForm.remove();
-                updateQuestionOrder();
-            } else {
-                showError(data.message || 'Неизвестная ошибка при удалении');
-            }
-        })
-        .catch(error => {
-            showError(error.message);
-        })
-        .finally(() => {
-            deleteBtn.innerHTML = originalHtml;
-            deleteBtn.disabled = false;
-            delete questionForm.dataset.deleting;
+            document.getElementById('cancel-delete').addEventListener('click', () => {
+                modal.remove();
+                resolve(false);
+            });
         });
     }
 
-    // Функция для показа ошибки (чтобы избежать дублирования)
+    // Удаление вопроса (обновленная версия)
+    async function deleteQuestion(questionForm) {
+        const confirmed = await confirmDelete();
+        if (!confirmed) return;
+
+        const questionId = questionForm.querySelector('[name$="-id"]')?.value;
+        const templateId = {{ object.id }};
+
+        if (questionForm.dataset.deleting === 'true') return;
+        questionForm.dataset.deleting = 'true';
+
+        // Обновленный подход: помечаем на удаление и скрываем
+        questionForm.classList.add('d-none');
+        const deleteInput = questionForm.querySelector('[name$="-DELETE"]');
+        if (deleteInput) deleteInput.value = 'on';
+
+        // Для новых вопросов (без ID) просто удаляем из DOM
+        if (!questionId) {
+            questionForm.remove();
+        } else {
+            // Для существующих вопросов можно оставить скрытую форму или отправить AJAX
+            const deleteBtn = questionForm.querySelector('.delete-question');
+            const originalHtml = deleteBtn.innerHTML;
+            deleteBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+            deleteBtn.disabled = true;
+
+            try {
+                const response = await fetch(`/templates/${templateId}/questions/${questionId}/delete/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    throw new Error(data.message || 'Неизвестная ошибка при удалении');
+                }
+            } catch (error) {
+                showError(error.message);
+                // В случае ошибки возвращаем форму в исходное состояние
+                questionForm.classList.remove('d-none');
+                if (deleteInput) deleteInput.value = '';
+            } finally {
+                deleteBtn.innerHTML = originalHtml;
+                deleteBtn.disabled = false;
+            }
+        }
+
+        updateQuestionOrder();
+        updateManagementForm(); // Добавлен вызов обновления management form
+    }
+
+    // Функция для показа ошибки
     let isErrorShowing = false;
     function showError(message) {
         if (isErrorShowing) return;
@@ -278,57 +330,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 100);
     }
 
-    // Инициализация обработчиков
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.delete-question').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const questionForm = this.closest('.question-form');
-                deleteQuestion(questionForm);
-            });
-        });
-    });
-
-    // Для динамически добавленных элементов используйте делегирование событий
-    document.getElementById('questions-formset').addEventListener('click', function(e) {
-        if (e.target.classList.contains('delete-question') ||
-            e.target.closest('.delete-question')) {
-            const btn = e.target.classList.contains('delete-question') ?
-                       e.target : e.target.closest('.delete-question');
-            const questionForm = btn.closest('.question-form');
-            deleteQuestion(questionForm);
-        }
-    });
-
-
-    // Инициализация обработчиков
-    document.querySelectorAll('.delete-question').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const questionForm = this.closest('.question-form');
-            deleteQuestion(questionForm);
-        });
-    });
-
     // Инициализация обработчиков для вопроса
     const initQuestionHandlers = (questionElement) => {
-        // Обработчик типа ответа
         const typeSelect = questionElement.querySelector('select[name$="-answer_type"]');
         if (typeSelect) {
             typeSelect.addEventListener('change', () => {
                 const scaleInputs = questionElement.querySelectorAll('[data-scale]');
                 scaleInputs.forEach(input => {
-                    input.value = typeSelect.value === 'scale' ? '1' : '';
+                    if (typeSelect.value === 'scale') {
+                        if (input.dataset.scale === 'min') input.value = '1';
+                        if (input.dataset.scale === 'max') input.value = '5';
+                    } else {
+                        input.value = '';
+                    }
                 });
             });
         }
 
-        // Кнопка удаления
         const deleteBtn = questionElement.querySelector('.delete-question');
         if (deleteBtn) {
-            deleteBtn.addEventListener('click', (e) => {
+            deleteBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
-                if (confirm('Вы уверены, что хотите удалить этот вопрос?')) {
-                    deleteQuestion(questionElement);
-                }
+                const questionForm = e.target.closest('.question-form');
+                await deleteQuestion(questionForm);
             });
         }
     };
@@ -339,11 +363,9 @@ document.addEventListener('DOMContentLoaded', function() {
         let isValid = true;
         const errors = [];
 
-        // Сбрасываем предыдущие ошибки
         form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
         errorContainer.classList.add('d-none');
 
-        // Проверка названия шаблона
         const nameInput = form.querySelector('[name="name"]');
         if (!nameInput?.value?.trim()) {
             errors.push('Название шаблона обязательно');
@@ -351,7 +373,6 @@ document.addEventListener('DOMContentLoaded', function() {
             isValid = false;
         }
 
-        // Проверка вопросов
         const questions = form.querySelectorAll('.question-form:not(.d-none)');
         if (questions.length === 0) {
             errors.push('Добавьте хотя бы один вопрос');
@@ -362,17 +383,22 @@ document.addEventListener('DOMContentLoaded', function() {
             const textArea = question.querySelector('textarea');
             const answerType = question.querySelector('select')?.value;
 
-            // Проверка текста вопроса
             if (!textArea?.value?.trim()) {
                 errors.push(`Вопрос ${index + 1}: Текст обязателен`);
                 textArea?.classList.add('is-invalid');
                 isValid = false;
             }
 
-            // Проверка шкалы
             if (answerType === 'scale') {
                 const scaleMin = question.querySelector('[data-scale="min"]');
                 const scaleMax = question.querySelector('[data-scale="max"]');
+
+                if (scaleMin && scaleMax) {
+                    if (scaleMin.value === "" || scaleMax.value === "") {
+                        scaleMin.value = "1";
+                        scaleMax.value = "5";
+                    }
+                }
 
                 if (!scaleMin || !scaleMax ||
                     scaleMin.value !== "1" ||
@@ -383,7 +409,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-        // Вывод ошибок
         if (!isValid) {
             errorContainer.querySelector('.errors-list').innerHTML =
                 errors.map(e => `<div>• ${e}</div>`).join('');
@@ -396,23 +421,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Инициализация всех элементов
     const init = () => {
-        // Инициализация существующих вопросов
         document.querySelectorAll('.question-form:not(.prototype)').forEach(initQuestionHandlers);
-
-        // Кнопка добавления
         addButton.addEventListener('click', addNewQuestion);
-
-        // Обработчик формы
         form.addEventListener('submit', validateForm);
-
-        // Первоначальное обновление порядка
         updateQuestionOrder();
     };
 
-    console.log("Current sort_order values:",
-        Array.from(document.querySelectorAll('[name$="-sort_order"]'))
-            .map(input => input.value)
-    );
     init();
 });
 </script>

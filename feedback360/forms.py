@@ -112,10 +112,14 @@ class QuestionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if not self.instance.pk:
             self.initial.update({
-                'sort_order': 0,  # Временное значение (перезапишется во View)
+                'sort_order': 0,
                 'scale_min': 1,
                 'scale_max': 5
             })
+        # Принудительно устанавливаем значения для шкалы, если тип - scale
+        if self.instance.answer_type == 'scale' or self.data.get('answer_type') == 'scale':
+            self.initial['scale_min'] = 1
+            self.initial['scale_max'] = 5
 
     def clean(self):
         cleaned_data = super().clean()

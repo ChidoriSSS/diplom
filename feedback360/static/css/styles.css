@@ -107,3 +107,15 @@ textarea.form-control {
 .form-control[rows="2"] {
     min-height: 100px;
 }
+
+
+/* Принудительное применение темных стилей для body при темной теме */
+html[data-bs-theme="dark"] body {
+    background-color: #121212;
+    color: #f8f9fa;
+}
+
+/* Плавный переход для фона */
+html, body {
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
