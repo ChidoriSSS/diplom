@@ -50,7 +50,7 @@ class Question(models.Model):
         ('2', '2 - Редко'),
         ('3', '3 - Иногда'),
         ('4', '4 - Часто'),
-        ('5', '5 - Всегда'),
+        ('5', '5 - Очень часто'),
     ]
 
     template = models.ForeignKey('SurveyTemplate',on_delete=models.CASCADE,related_name='template_questions', null=True,blank=True)
