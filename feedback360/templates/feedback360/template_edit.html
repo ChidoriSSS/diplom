@@ -13,6 +13,7 @@
         </div>
         <div class="card-body">
             <form method="post" novalidate id="template-form">
+                <input type="hidden" name="redirect_to" value="template_list">
                 {% csrf_token %}
 
                 {{ formset.management_form }}
@@ -168,34 +169,60 @@ document.addEventListener('DOMContentLoaded', function() {
     errorContainer.innerHTML = `<h5 class="alert-heading">Ошибки заполнения:</h5><div class="errors-list"></div>`;
     form.prepend(errorContainer);
 
-    // Функция обновления management_form
-    const updateManagementForm = () => {
-        const totalFormsInput = form.querySelector('[name$="-TOTAL_FORMS"]');
-        const visibleQuestions = document.querySelectorAll('.question-form:not(.prototype):not(.d-none)');
-        if (totalFormsInput) {
-            totalFormsInput.value = visibleQuestions.length;
-            console.log(`TOTAL_FORMS updated to: ${totalFormsInput.value}`);
-        }
-    };
-
-    // Основная функция обновления порядка
-    const updateQuestionOrder = () => {
+    // Функция полной переиндексации всех форм
+    const reindexForms = () => {
         const visibleQuestions = Array.from(
             questionsContainer.querySelectorAll('.question-form:not(.prototype):not(.d-none)')
         );
 
-        visibleQuestions.forEach((question, index) => {
-            const orderInput = question.querySelector('[name$="-sort_order"]');
-            const questionNumber = index + 1;
+        // Обновляем TOTAL_FORMS
+        const totalFormsInput = form.querySelector('[name$="-TOTAL_FORMS"]');
+        if (totalFormsInput) {
+            totalFormsInput.value = visibleQuestions.length;
+        }
 
+        // Переиндексируем все вопросы
+        visibleQuestions.forEach((question, index) => {
+            const newPrefix = `template_questions-${index}`;
+
+            // Обновляем все поля формы
+            question.querySelectorAll('input, select, textarea').forEach(field => {
+                const nameParts = field.name.split('-');
+                if (nameParts.length === 3) {
+                    const fieldName = nameParts[2];
+                    field.name = `${newPrefix}-${fieldName}`;
+                    field.id = `id_${newPrefix}-${fieldName}`;
+                }
+            });
+
+            // Обновляем порядковый номер
+            const orderInput = question.querySelector('[name$="-sort_order"]');
             if (orderInput) {
-                orderInput.value = questionNumber;
-                question.querySelector('.question-counter').textContent = `Вопрос ${questionNumber}`;
-                console.log(`Updated question ${index + 1}: sort_order=${orderInput.value}`);
+                orderInput.value = index + 1;
+            }
+
+            // Обновляем отображаемый номер
+            question.querySelector('.question-counter').textContent = `Вопрос ${index + 1}`;
+        });
+    };
+
+    // Функция очистки формы перед отправкой
+    const cleanFormBeforeSubmit = () => {
+        // Удаляем все скрытые вопросы
+        document.querySelectorAll('.question-form.d-none').forEach(el => el.remove());
+
+        // Удаляем поля с __prefix__
+        document.querySelectorAll('[name*="__prefix__"]').forEach(el => el.remove());
+
+        // Удаляем дубликаты полей
+        const seenFields = new Set();
+        document.querySelectorAll('input, select, textarea').forEach(field => {
+            if (seenFields.has(field.name)) {
+                field.remove();
+            } else {
+                seenFields.add(field.name);
             }
         });
-
-        updateManagementForm(); // Добавлен вызов обновления management form
     };
 
     // Добавление нового вопроса
@@ -206,9 +233,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const newQuestion = prototype.cloneNode(true);
         newQuestion.classList.remove('prototype', 'd-none');
 
-        newQuestion.innerHTML = newQuestion.innerHTML.replace(/__prefix__/g,
-            document.querySelectorAll('.question-form:not(.prototype)').length
-        );
+        const newIndex = document.querySelectorAll('.question-form:not(.prototype)').length;
+        newQuestion.innerHTML = newQuestion.innerHTML.replace(/__prefix__/g, newIndex);
+
+        // Устанавливаем sort_order в 0 для нового вопроса
+        const orderInput = newQuestion.querySelector('[name$="-sort_order"]');
+        if (orderInput) orderInput.value = 0;
 
         // Устанавливаем значения по умолчанию для шкалы
         const scaleInputs = newQuestion.querySelectorAll('[data-scale]');
@@ -219,10 +249,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         questionsContainer.insertBefore(newQuestion, addButton.parentElement);
         initQuestionHandlers(newQuestion);
-        updateQuestionOrder();
+        reindexForms();
     };
 
-    // Функция подтверждения удаления
+    // Функция подтверждения удаления (без изменений)
     async function confirmDelete() {
         return new Promise((resolve) => {
             const modal = document.createElement('div');
@@ -261,7 +291,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Удаление вопроса (обновленная версия)
+    // Удаление вопроса (с сохранением функционала)
     async function deleteQuestion(questionForm) {
         const confirmed = await confirmDelete();
         if (!confirmed) return;
@@ -272,7 +302,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (questionForm.dataset.deleting === 'true') return;
         questionForm.dataset.deleting = 'true';
 
-        // Обновленный подход: помечаем на удаление и скрываем
+        // Помечаем на удаление и скрываем
         questionForm.classList.add('d-none');
         const deleteInput = questionForm.querySelector('[name$="-DELETE"]');
         if (deleteInput) deleteInput.value = 'on';
@@ -281,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!questionId) {
             questionForm.remove();
         } else {
-            // Для существующих вопросов можно оставить скрытую форму или отправить AJAX
+            // Для существующих вопросов AJAX запрос
             const deleteBtn = questionForm.querySelector('.delete-question');
             const originalHtml = deleteBtn.innerHTML;
             deleteBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
@@ -313,11 +343,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        updateQuestionOrder();
-        updateManagementForm(); // Добавлен вызов обновления management form
+        reindexForms();
     }
 
-    // Функция для показа ошибки
+    // Показать ошибку (без изменений)
     let isErrorShowing = false;
     function showError(message) {
         if (isErrorShowing) return;
@@ -330,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 100);
     }
 
-    // Инициализация обработчиков для вопроса
+    // Инициализация обработчиков для вопроса (без изменений)
     const initQuestionHandlers = (questionElement) => {
         const typeSelect = questionElement.querySelector('select[name$="-answer_type"]');
         if (typeSelect) {
@@ -357,9 +386,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // Валидация формы
+    // Валидация формы (с очисткой перед отправкой)
     const validateForm = (e) => {
         e.preventDefault();
+
+        // Очищаем форму перед отправкой
+        cleanFormBeforeSubmit();
+
+        // Обновляем индексы
+        reindexForms();
+
         let isValid = true;
         const errors = [];
 
@@ -415,16 +451,23 @@ document.addEventListener('DOMContentLoaded', function() {
             errorContainer.classList.remove('d-none');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
+            // Логирование данных формы для отладки
+            console.log("Final form data before submit:");
+            const formData = new FormData(form);
+            for (const [key, value] of formData.entries()) {
+                console.log(key, value);
+            }
+
             form.submit();
         }
     };
 
-    // Инициализация всех элементов
+    // Инициализация
     const init = () => {
         document.querySelectorAll('.question-form:not(.prototype)').forEach(initQuestionHandlers);
         addButton.addEventListener('click', addNewQuestion);
         form.addEventListener('submit', validateForm);
-        updateQuestionOrder();
+        reindexForms(); // Первоначальная индексация
     };
 
     init();

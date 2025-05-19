@@ -647,38 +647,28 @@ class TemplateUpdateView(AdminRequiredMixin, UpdateView):
 
         self.object = form.save()
 
-        deleted_questions = []
-        instances_to_save = []
-        new_instances = []
+        # Получаем все существующие вопросы
+        existing_questions = list(self.object.template_questions.all())
+        questions_to_keep = []
 
-        for i, form in enumerate(formset):
+        # Обрабатываем каждую форму
+        for form in formset:
             if form.cleaned_data.get('DELETE'):
+                # Удаляем помеченные вопросы
                 if form.instance.pk:
-                    deleted_questions.append(form.instance.pk)
                     form.instance.delete()
             else:
                 instance = form.save(commit=False)
                 instance.template = self.object
-                instance.sort_order = i + 1
+                questions_to_keep.append(instance)
 
-                if instance.pk:  # Существующий вопрос
-                    instances_to_save.append(instance)
-                else:  # Новый вопрос
-                    new_instances.append(instance)
-
-        # Сохраняем новые вопросы по одному
-        for instance in new_instances:
-            instance.save()
-
-        # Массово обновляем существующие вопросы
-        if instances_to_save:
-            Question.objects.bulk_update(
-                instances_to_save,
-                ['text', 'answer_type', 'sort_order', 'scale_min', 'scale_max']
-            )
+        # Обновляем порядок вопросов
+        for i, question in enumerate(questions_to_keep):
+            question.sort_order = i + 1
+            question.save()
 
         messages.success(self.request, "Шаблон успешно обновлён!")
-        return super().form_valid(form)
+        return redirect('template_list')
 
 class QuestionDeleteView(AdminRequiredMixin, View):
     def post(self, request, *args, **kwargs):

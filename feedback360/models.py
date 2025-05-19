@@ -71,9 +71,18 @@ class Question(models.Model):
         unique_together = ('template', 'sort_order')
 
     def save(self, *args, **kwargs):
+        # Для новых вопросов без указанного порядка
+        if not self.pk and self.sort_order == 0:
+            max_order = Question.objects.filter(
+                template=self.template
+            ).aggregate(Max('sort_order'))['sort_order__max'] or 0
+            self.sort_order = max_order + 1
+
+        # Для scale вопросов устанавливаем значения по умолчанию
         if self.answer_type == 'scale':
             self.scale_min = 1
             self.scale_max = 5
+
         super().save(*args, **kwargs)
 
     def clean(self):
