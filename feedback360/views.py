@@ -1,28 +1,17 @@
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import ProtectedError, Q, Max
-from django.forms import inlineformset_factory
-from django.views import View
+from django.db.models import ProtectedError
 from django.views.generic import (
     ListView, DetailView, CreateView,
     UpdateView, TemplateView, DeleteView
 )
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse_lazy, reverse
+from django.urls import reverse
 from django.contrib import messages
 from django.utils import timezone
-
-from . import forms
-from .models import Survey, Respondent, Question, Response, User, Rater, SurveyTemplate, \
-    Notification, UserRole, Role, AccessRequest
-from .forms import SurveyForm, QuestionForm, ResponseForm, TextResponseForm, \
-    MultipleChoiceResponseForm, ScaleResponseForm, ListResponseForm, QuestionFormSet, RespondentFormSet, \
-    AccessRequestForm, SurveyTemplateForm
-from django.db.models.signals import post_save
-from django.dispatch import receiver
+from .models import Survey, Respondent, Question, User, Rater, SurveyTemplate
+from .forms import SurveyForm, QuestionForm, QuestionFormSet, RespondentFormSet, SurveyTemplateForm
 from django.contrib.auth.decorators import login_required
-from .mixins import LeaderRequiredMixin, AdminRequiredMixin, user_has_admin_access, LeaderAccessMixin
+from .mixins import LeaderRequiredMixin, AdminRequiredMixin, user_has_admin_access
 from .utils import copy_questions_from_template
 from django.http import JsonResponse
 from django.urls import reverse_lazy
@@ -172,43 +161,6 @@ class SurveyCreateView(LeaderRequiredMixin, CreateView):
         return kwargs
 
 
-class SurveyQuestionsEditView(UpdateView):
-    model = Survey
-    template_name = 'feedback360/survey_questions_edit.html'
-    fields = []
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        return context
-
-    def post(self, request, *args, **kwargs):
-        survey = self.get_object()
-
-
-        for key, value in request.POST.items():
-            if key.startswith('question_'):
-                q_id = key.split('_')[1]
-                try:
-                    question = Question.objects.get(id=q_id, survey=survey)
-                    question.text = value
-                    question.save()
-                except Question.DoesNotExist:
-                    pass
-
-
-        new_questions = request.POST.getlist('new_questions[]')
-        for q_text in new_questions:
-            if q_text.strip():
-                Question.objects.create(
-                    text=q_text.strip(),
-                    competency=survey.survey_competencies.first(),
-                    answer_type='scale',
-                    sort_order=999
-                )
-
-        return redirect('survey_detail', pk=survey.pk)
-
-
 
 class SurveyListView(LoginRequiredMixin, ListView):
     model = Survey
@@ -263,208 +215,6 @@ class QuestionCreateView(LoginRequiredMixin, CreateView):
         return reverse_lazy('survey_detail', kwargs={'pk': self.kwargs['pk']})
 
 
-class ResponseCreateView(LoginRequiredMixin, CreateView):
-    model = Response
-    template_name = 'feedback360/response_form.html'
-    form_class = ResponseForm
-    fields = []
-
-    def dispatch(self, request, *args, **kwargs):
-        import logging
-        logger = logging.getLogger(__name__)
-
-        try:
-            # Инициализация основных объектов
-            self.rater = get_object_or_404(
-                Rater,
-                pk=kwargs['rater_id'],
-                user=request.user,
-                status__in=['pending', 'started']
-            )
-            self.survey = self.rater.respondent.survey
-
-            # Инициализация сессионных ключей (ДОБАВЛЕНО)
-            self.session_key = f'survey_{self.survey.id}_questions_order'
-            self.full_list_key = f'survey_{self.survey.id}_full_questions'
-
-            # Инициализация порядка вопросов
-            if not request.session.get(self.session_key):
-                questions = Question.objects.filter(
-                    competency__template=self.survey.template
-                ).order_by('competency__sort_order', 'sort_order').values_list('id', flat=True)
-                request.session[self.session_key] = list(questions)
-                request.session[self.full_list_key] = list(questions)
-                request.session.modified = True
-
-            # Получаем список всех вопросов (ИСПРАВЛЕНО)
-            self.full_question_ids = request.session[self.full_list_key]
-            self.total_questions = len(self.full_question_ids)
-
-            # Сбрасываем сессию при начале нового опроса (ПЕРЕМЕЩЕНО ВНИЗ)
-            self._init_session_data(request)
-
-            # Обработка параметра запроса
-            self.current_global_index = self._get_current_index(request)
-
-            # Получаем текущий вопрос
-            self.current_question = get_object_or_404(
-                Question,
-                id=self.full_question_ids[self.current_global_index]
-            )
-
-        except Exception as e:
-            logger.error(f"Critical error: {str(e)}", exc_info=True)
-            messages.error(request, "Произошла внутренняя ошибка")
-            return redirect('dashboard')
-
-        return super().dispatch(request, *args, **kwargs)
-
-    def _init_session_data(self, request):
-        """Инициализация сессионных данных для текущего опроса"""
-        # Отдельный ключ для индекса (ИЗМЕНЕНО)
-        self.index_session_key = f'survey_{self.survey.id}_current_index'
-
-        # Сбрасываем индекс при первом обращении к опросу
-        if f'survey_{self.survey.id}_initialized' not in request.session:
-            request.session[self.index_session_key] = 0
-            request.session[f'survey_{self.survey.id}_initialized'] = True
-            request.session.modified = True
-
-    def _get_current_index(self, request):
-        """Определяем текущий индекс вопроса для конкретного опроса"""
-        # Используем self.full_list_key (ИСПРАВЛЕНО)
-        answered_ids = Response.objects.filter(
-            rater=self.rater,
-            question_id__in=request.session[self.full_list_key]
-        ).values_list('question_id', flat=True)
-
-        # Приоритет 1: Параметр из URL
-        if 'q' in request.GET:
-            try:
-                return max(0, min(int(request.GET['q']), self.total_questions - 1))
-            except (ValueError, TypeError):
-                pass
-
-        # Приоритет 2: Поиск первого неотвеченного вопроса
-        for idx, q_id in enumerate(request.session[self.full_list_key]):
-            if q_id not in answered_ids:
-                return idx
-
-        # Все вопросы отвечены - последний вопрос
-        return self.total_questions - 1
-
-
-
-    def get_context_data(self, **kwargs):
-        # Явно формируем контекст без использования 'object'
-        context = {
-            'rater': self.rater,
-            'survey': self.survey,
-            'question': self.current_question,
-            'total_questions': self.total_questions,
-            'current_question_number': self.current_global_index + 1,
-            'current_global_index': self.current_global_index,
-            'is_last': self.current_global_index >= self.total_questions - 1,
-            'is_first': self.current_global_index == 0,
-            'progress': int(((self.current_global_index + 1) / self.total_questions) * 100),
-            'form': self.get_form()
-        }
-        return context
-
-    def form_invalid(self, form):
-        # Убираем наследование от DetailView
-        return self.render_to_response(self.get_context_data(form=form))
-
-    def get_form_class(self):
-        return {
-            'text': TextResponseForm,
-            'multiple': MultipleChoiceResponseForm,
-            'list': ListResponseForm,
-            'scale': ScaleResponseForm
-        }.get(self.current_question.answer_type, ScaleResponseForm)
-
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        kwargs['rater'] = self.rater
-        kwargs['question'] = self.current_question  # Добавляем передачу вопроса
-
-        try:
-            existing_response = Response.objects.get(
-                rater=self.rater,
-                question=self.current_question
-            )
-            kwargs['instance'] = existing_response
-        except Response.DoesNotExist:
-            pass
-
-        return kwargs
-
-    def post(self, request, *args, **kwargs):
-        # Определяем направление до валидации формы
-        direction = request.POST.get('direction')
-
-        if direction == 'back':
-            return self._redirect_prev()
-
-        # Стандартная обработка для других случаев
-        return super().post(request, *args, **kwargs)
-
-    def form_valid(self, form):
-        # Сохраняем ответ только при нажатии "Далее"
-        try:
-            response = form.save(commit=False)
-            response.rater = self.rater
-            response.question = self.current_question
-            response.save()
-            messages.success(self.request, "Ответ сохранён")
-        except Exception as e:
-            logger.error(f"Ошибка сохранения: {str(e)}")
-            return self.form_invalid(form)
-
-        return self._redirect_next()
-
-    def _redirect_prev(self):
-        """Перенаправление на предыдущий вопрос без сохранения"""
-        prev_index = max(0, self.current_global_index - 1)
-        return redirect(f"{reverse('respond', args=[self.rater.id])}?q={prev_index}")
-
-    def _redirect_next(self):
-        """Перенаправление с очисткой сессии для других опросов"""
-        next_index = self.current_global_index + 1
-        if next_index >= self.total_questions:
-            # Очищаем флаг инициализации при завершении
-            if f'survey_{self.survey.id}_initialized' in self.request.session:
-                del self.request.session[f'survey_{self.survey.id}_initialized']
-            return self.complete_assessment()
-
-        # Сохраняем индекс только для текущего опроса
-        self.request.session[self.session_key] = next_index
-        return redirect(f"{reverse('respond', args=[self.rater.id])}?q={next_index}")
-
-    def complete_assessment(self):
-        self.rater.status = 'completed'
-        self.rater.completed_at = timezone.now()
-        self.rater.save()
-        return redirect('survey_detail', pk=self.rater.respondent.survey.pk)
-
-
-class SurveyUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
-    model = Survey
-    form_class = SurveyForm
-    template_name = 'feedback360/survey_update.html'
-
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        kwargs['user'] = self.request.user
-        return kwargs
-
-    def test_func(self):
-        return self.get_object().can_edit(self.request.user)
-
-    def form_valid(self, form):
-        messages.success(self.request, "Опрос успешно обновлен")
-        return super().form_valid(form)
-
 
 def custom_404_view(request, exception):
     return render(request, 'feedback360/404.html', status=404)
@@ -505,64 +255,6 @@ def get_template_questions(request, template_id):
             'message': 'Шаблон не найден'
         }, status=404)
 
-
-class SurveyRequestView(LoginRequiredMixin, CreateView):
-    model = AccessRequest
-    form_class = AccessRequestForm
-    template_name = 'feedback360/survey_request.html'
-
-    def form_valid(self, form):
-        form.instance.requester = self.request.user
-        response = super().form_valid(form)
-
-        # Создаем уведомление для администратора
-        Notification.objects.create(
-            user=form.instance.admin,
-            message=f"Руководитель {self.request.user.get_full_name()} запрашивает права на создание опросов",
-            link=reverse('admin:access_request_detail', args=[self.object.id])
-        )
-        return response
-
-    def get_success_url(self):
-        return reverse('dashboard')
-
-
-class AccessRequestListView(AdminRequiredMixin, ListView):
-    model = AccessRequest
-    template_name = 'feedback360/access_request_list.html'
-    context_object_name = 'requests'
-
-
-class AccessRequestDetailView(AdminRequiredMixin, DetailView):
-    model = AccessRequest
-    template_name = 'feedback360/access_request_detail.html'
-
-    def post(self, request, *args, **kwargs):
-        request_obj = self.get_object()
-        decision = request.POST.get('decision')
-
-        if decision == 'approve':
-            # Выдаем права руководителю
-            role, created = Role.objects.get_or_create(name='Руководитель')
-            UserRole.objects.get_or_create(user=request_obj.requester, role=role)
-
-            # Создаем уведомление
-            Notification.objects.create(
-                user=request_obj.requester,
-                message="Вам были предоставлены права на создание опросов",
-                link=reverse('survey_create')
-            )
-            request_obj.status = 'approved'
-
-        elif decision == 'reject':
-            Notification.objects.create(
-                user=request_obj.requester,
-                message="Ваш запрос на права доступа был отклонен"
-            )
-            request_obj.status = 'rejected'
-
-        request_obj.save()
-        return redirect('access_request_list')
 
 
 class TemplateListView(AdminRequiredMixin, ListView):

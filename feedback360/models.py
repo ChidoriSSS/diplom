@@ -314,32 +314,3 @@ def handle_survey_status_change(sender, instance, **kwargs):
     if instance.status == 'active' and instance.pk:
         instance.send_invitations()
 
-class AccessRequest(models.Model):
-    STATUS_CHOICES = [
-        ('pending', 'На рассмотрении'),
-        ('approved', 'Одобрено'),
-        ('rejected', 'Отклонено'),
-    ]
-
-    requester = models.ForeignKey(User,on_delete=models.CASCADE,related_name='access_requests',verbose_name='Заявитель')
-    admin = models.ForeignKey(User,on_delete=models.CASCADE,related_name='admin_requests',verbose_name='Администратор')
-    status = models.CharField(max_length=20,choices=STATUS_CHOICES,default='pending',verbose_name='Статус')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    comment = models.TextField('Комментарий',blank=True,null=True,help_text="Дополнительная информация о запросе")
-
-    class Meta:
-        verbose_name = 'Запрос прав доступа'
-        verbose_name_plural = 'Запросы прав доступа'
-
-class Notification(models.Model):
-    user = models.ForeignKey(User,on_delete=models.CASCADE,related_name='notifications',verbose_name='Пользователь')
-    message = models.TextField(verbose_name='Сообщение')
-    is_read = models.BooleanField(default=False, verbose_name='Прочитано')
-    created_at = models.DateTimeField(auto_now_add=True)
-    link = models.URLField(blank=True, null=True, verbose_name='Ссылка')
-
-    class Meta:
-        verbose_name = 'Уведомление'
-        verbose_name_plural = 'Уведомления'
-        ordering = ['-created_at']
