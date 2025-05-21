@@ -37,58 +37,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        today = timezone.now().date()
-        user = self.request.user
-        context['is_employee'] = user.is_employee
-
-        # Фильтры
-        category = self.request.GET.get('category')
-        sort_by = self.request.GET.get('sort', 'deadline')
-
-        # Активные опросы
-        active_surveys = Survey.objects.filter(
-            respondents__user=user,
-            start_date__lte=today,
-            end_date__gte=today,
-            status='active'
-        ).distinct()
-
-        # Добавляем дополнительные данные
-        for survey in active_surveys:
-            # Прогресс пользователя
-            survey.user_progress = survey.get_user_progress(user)
-            # Категории компетенций
-
-
-        # Фильтрация по категории
-        if category:
-            active_surveys = [s for s in active_surveys if category in s.categories]
-
-        # Сортировка
-        if sort_by == 'progress':
-            active_surveys = sorted(active_surveys,
-                                  key=lambda s: s.user_progress,
-                                  reverse=True)
-        else:
-            active_surveys = sorted(active_surveys,
-                                   key=lambda s: s.end_date)
-
-        # Ожидающие оценки
-        pending_raters = Rater.objects.filter(
-            user=user,
-            status='pending',
-            respondent__survey__end_date__gte=today
-        ).select_related('respondent__survey')
-
-        context.update({
-            'active_surveys': active_surveys,
-            'total_active': len(active_surveys),
-            'surveys_to_complete': pending_raters.order_by('respondent__survey__end_date'),
-            'total_pending': pending_raters.count(),
-            'categories': [] ,
-            'selected_category': category,
-            'sort_mode': sort_by
-        })
+        context['is_employee'] = self.request.user.is_employee
         return context
 
 
